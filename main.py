@@ -1,85 +1,109 @@
-from flask import Flask, request
-import hmac, hashlib, time, json
+from flask import Flask, request, jsonify
+import hmac
+import hashlib
+import time
 import requests
-import os
+import json
 
 app = Flask(__name__)
 
-# 환경변수 또는 직접 입력 (보안을 위해 환경변수 추천)
+# ====== 사용자 설정 ======
 API_KEY = os.environ.get("bg_ff130b41cb44a15b7f8e9f0870bcd37e", "여기에_API_KEY")
 API_SECRET = os.environ.get("90029771e071d6a374b0ed4b1aba13511e098111a5f229c8d11cfc92a991a659", "여기에_API_SECRET")
 API_PASSPHRASE = os.environ.get("qoooooom", "여기에_API_PASSPHRASE")
-
 BASE_URL = "https://api.bitget.com"
+SYMBOL = "SOLUSDT_UMCBL"  # 비트겟 선물 심볼
 
-# 최근 주문 추적용 (중복 방지)
-last_signal = {"id": None, "timestamp": 0}
+# ====== 복리 수량 계산 함수 ======
+def calculate_order_qty(balance, price, leverage=3, risk_pct=0.1):
+    qty = (balance * risk_pct * leverage) / price
+    return round(qty, 2)
 
+# ====== 인증 헤더 생성 ======
+def get_auth_headers(api_key, api_secret, api_passphrase, method, path, body=''):
+    timestamp = str(int(time.time() * 1000))
+    prehash = f"{timestamp}{method.upper()}{path}{body}"
+    sign = hmac.new(api_secret.encode(), prehash.encode(), hashlib.sha256).hexdigest()
 
-def sign(secret, timestamp, method, request_path, body=''):
-    pre_hash = f"{timestamp}{method.upper()}{request_path}{body}"
-    return hmac.new(secret.encode(), pre_hash.encode(), hashlib.sha256).hexdigest()
+    return {
+        "ACCESS-KEY": api_key,
+        "ACCESS-SIGN": sign,
+        "ACCESS-TIMESTAMP": timestamp,
+        "ACCESS-PASSPHRASE": api_passphrase,
+        "Content-Type": "application/json"
+    }
 
+# ====== 잔고 조회 ======
+def get_balance():
+    path = "/api/mix/v1/account/accounts?productType=UMCBL"
+    url = BASE_URL + path
+    headers = get_auth_headers(API_KEY, API_SECRET, API_PASSPHRASE, "GET", path)
+    response = requests.get(url, headers=headers)
+    data = response.json()
+    for item in data['data']:
+        if item['marginCoin'] == 'USDT':
+            return float(item['available'])
+    return 0
 
-@app.route("/", methods=["POST"])
-def webhook():
-    data = request.get_json()
-    print("🚀 신호 수신됨:", data)
+# ====== 분할 주문 전송 ======
+def send_split_order(side, price, signal_type):
+    balance = get_balance()
+    qty_total = calculate_order_qty(balance, price)
 
-    # 중복 방지: order_id와 최근 시간 비교
-    order_id = data.get("order_id")
-    now = time.time()
-    if order_id == last_signal["id"] and (now - last_signal["timestamp"] < 60):
-        print("⚠️ 중복된 신호 무시됨.")
-        return {"status": "duplicate"}, 200
+    # 비율 설정
+    if signal_type == "entry":
+        portions = [0.7, 0.1, 0.1, 0.1]  # 매수 진입
+    elif signal_type == "exit":
+        portions = [0.5, 0.2, 0.2, 0.1]  # 매도 청산
+    else:
+        return [{"error": "Invalid signal_type"}]
 
-    # 중복으로 처리되지 않으면 기록
-    last_signal["id"] = order_id
-    last_signal["timestamp"] = now
+    responses = []
 
-    signal = data.get("signal", "").upper()
-    symbol = data.get("symbol", "SOLUSDT")
-    size = float(data.get("order_contracts", 0.1))
-    product_type = "umcbl"  # 무기한 USDT 계약
-    margin_coin = "USDT"
-    side = "buy" if "LONG" in signal else "sell"
-
-    # 분할매수 수량 설정 (예: 20% / 20% / 30% / 30%)
-    steps = [0.2, 0.2, 0.3, 0.3]
-
-    for i, step in enumerate(steps, 1):
-        step_size = round(size * step, 3)
-
-        body_dict = {
-            "symbol": symbol,
-            "marginCoin": margin_coin,
-            "orderType": "market",
+    for portion in portions:
+        qty = round(qty_total * portion, 2)
+        body = {
+            "symbol": SYMBOL,
+            "marginCoin": "USDT",
+            "size": str(qty),
             "side": side,
-            "size": str(step_size),
-            "productType": product_type
+            "orderType": "market",
+            "timeInForceValue": "normal",
+            "price": ""
         }
+        path = "/api/mix/v1/order/placeOrder"
+        url = BASE_URL + path
+        body_json = json.dumps(body)
+        headers = get_auth_headers(API_KEY, API_SECRET, API_PASSPHRASE, "POST", path, body_json)
+        res = requests.post(url, headers=headers, data=body_json)
+        responses.append(res.json())
+        time.sleep(0.2)
 
-        endpoint = "/api/mix/v1/order/placeOrder"
-        url = BASE_URL + endpoint
-        body = json.dumps(body_dict)
-        timestamp = str(int(time.time() * 1000))
-        signature = sign(API_SECRET, timestamp, "POST", endpoint, body)
+    return responses
 
-        headers = {
-            "ACCESS-KEY": API_KEY,
-            "ACCESS-SIGN": signature,
-            "ACCESS-TIMESTAMP": timestamp,
-            "ACCESS-PASSPHRASE": API_PASSPHRASE,
-            "Content-Type": "application/json"
-        }
+# ====== 웹훅 처리 ======
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.json
+    signal = data.get("signal")
+    price = float(data.get("price", 0))
 
-        response = requests.post(url, headers=headers, data=body)
-        print(f"📦 STEP {i} 응답:", response.status_code, response.text)
-        time.sleep(0.5)  # Bitget 제한을 고려한 딜레이
+    if signal == "long_entry":
+        res = send_split_order("open_long", price, "entry")
+    elif signal == "short_entry":
+        res = send_split_order("open_short", price, "entry")
+    elif signal == "long_exit":
+        res = send_split_order("close_long", price, "exit")
+    elif signal == "short_exit":
+        res = send_split_order("close_short", price, "exit")
+    else:
+        return jsonify({"error": "invalid signal"}), 400
 
-    return {"status": "ok"}, 200
-
+    return jsonify(res)
 
 @app.route("/")
 def home():
     return "✅ 서버 정상 작동 중입니다!"
+
+if __name__ == "__main__":
+    app.run(debug=True)
