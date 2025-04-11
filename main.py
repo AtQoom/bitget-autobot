@@ -113,4 +113,4 @@ def webhook():
 def home():
     return "✅ 서버 정상 작동 중입니다!"
 
-# Fly.io에서는 app.run 사용하지 않음 (WSGI 방식 실행)
+# gunicorn 실행용 entry point
