@@ -113,5 +113,4 @@ def webhook():
 def home():
     return "✅ 서버 정상 작동 중입니다!"
 
-if __name__ == "__main__":
-    app.run(debug=True)
+# Fly.io에서는 app.run 사용하지 않음 (WSGI 방식 실행)
