@@ -50,18 +50,18 @@ def send_split_order(side, price, signal_type):
     balance = get_balance()
     qty_total = calculate_order_qty(balance, price)
 
-    # ✅ 최종 비율: 매수 7-1-1-1, 매도 5-2-2-1
+    # 비율 설정
     if signal_type == "entry":
-        portions = [0.7, 0.1, 0.1, 0.1]
+        portions = [0.7, 0.1, 0.1, 0.1]  # 매수 진입
     elif signal_type == "exit":
-        portions = [0.5, 0.2, 0.2, 0.1]
+        portions = [0.5, 0.2, 0.2, 0.1]  # 매도 청산
     else:
         return [{"error": "Invalid signal_type"}]
 
     responses = []
 
-    for portion in portions:
-        qty = round(qty_total * portion, 3)
+    for i, portion in enumerate(portions):
+        qty = round(qty_total * portion, 2)
         body = {
             "symbol": SYMBOL,
             "marginCoin": "USDT",
@@ -76,6 +76,7 @@ def send_split_order(side, price, signal_type):
         body_json = json.dumps(body)
         headers = get_auth_headers(API_KEY, API_SECRET, API_PASSPHRASE, "POST", path, body_json)
         res = requests.post(url, headers=headers, data=body_json)
+        print(f"📦 STEP {i+1} 주문 결과: {res.status_code} - {res.text}")
         responses.append(res.json())
         time.sleep(0.2)
 
@@ -84,29 +85,30 @@ def send_split_order(side, price, signal_type):
 # ====== 웹훅 처리 ======
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    try:
-        raw_data = request.get_data(as_text=True)
-        data = json.loads(raw_data)
-    except Exception as e:
-        return jsonify({"error": f"Invalid JSON or decoding failed: {str(e)}"}), 400
-
+    data = request.json
+    print("🚀 웹훅 신호 수신됨:", data)
     signal = data.get("signal")
     price = float(data.get("price", 0))
 
     if signal == "long_entry":
+        print("➡️ 롱 진입 요청 감지됨")
         res = send_split_order("open_long", price, "entry")
     elif signal == "short_entry":
+        print("➡️ 숏 진입 요청 감지됨")
         res = send_split_order("open_short", price, "entry")
     elif signal == "long_exit":
+        print("⬅️ 롱 청산 요청 감지됨")
         res = send_split_order("close_long", price, "exit")
     elif signal == "short_exit":
+        print("⬅️ 숏 청산 요청 감지됨")
         res = send_split_order("close_short", price, "exit")
     else:
+        print("❌ 유효하지 않은 시그널:", signal)
         return jsonify({"error": "invalid signal"}), 400
 
+    print("📦 주문 응답:", res)
     return jsonify(res)
 
-# ====== 헬스 체크 ======
 @app.route("/")
 def home():
     return "✅ 서버 정상 작동 중입니다!"
