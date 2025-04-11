@@ -1,21 +1,29 @@
 app = "bitget-autobot"
+
 primary_region = "sjc"
 
 [build]
-  dockerfile = "Dockerfile"
-
-[env]
-  PORT = "8080"
+  image = "python:3.11-slim"
 
 [[services]]
-  protocol = "tcp"
   internal_port = 8080
-  processes = ["app"]
+  protocol = "tcp"
 
   [[services.ports]]
-    handlers = ["http"]
     port = 80
 
   [[services.ports]]
-    handlers = ["tls", "http"]
     port = 443
+
+  [services.concurrency]
+    type = "requests"
+    hard_limit = 25
+    soft_limit = 20
+
+  [[services.tcp_checks]]
+    interval = 10000
+    timeout = 2000
+    restart_limit = 5
+
+[env]
+  PORT = "8080"
