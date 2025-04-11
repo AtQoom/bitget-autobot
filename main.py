@@ -8,9 +8,9 @@ import json
 app = Flask(__name__)
 
 # ====== 사용자 설정 ======
-API_KEY = os.environ.get("bg_ff130b41cb44a15b7f8e9f0870bcd37e", "여기에_API_KEY")
-API_SECRET = os.environ.get("90029771e071d6a374b0ed4b1aba13511e098111a5f229c8d11cfc92a991a659", "여기에_API_SECRET")
-API_PASSPHRASE = os.environ.get("qoooooom", "여기에_API_PASSPHRASE")
+API_KEY = "YOUR_BITGET_API_KEY"
+API_SECRET = "YOUR_BITGET_API_SECRET"
+API_PASSPHRASE = "YOUR_API_PASSPHRASE"
 BASE_URL = "https://api.bitget.com"
 SYMBOL = "SOLUSDT_UMCBL"  # 비트겟 선물 심볼
 
