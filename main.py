@@ -76,7 +76,7 @@ def send_split_order(side, price, signal_type):
         body_json = json.dumps(body)
         headers = get_auth_headers(API_KEY, API_SECRET, API_PASSPHRASE, "POST", path, body_json)
         res = requests.post(url, headers=headers, data=body_json)
-        print(f"📦 STEP {i+1} 주문 결과: {res.status_code} - {res.text}")
+        print(f"\U0001F4E6 STEP {i+1} 주문 결과: {res.status_code} - {res.text}")
         responses.append(res.json())
         time.sleep(0.2)
 
@@ -86,7 +86,7 @@ def send_split_order(side, price, signal_type):
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
-    print("🚀 웹훅 신호 수신됨:", data)
+    print("\U0001F680 웹훅 신호 수신됨:", data)
     signal = data.get("signal")
     price = float(data.get("price", 0))
 
@@ -106,11 +106,13 @@ def webhook():
         print("❌ 유효하지 않은 시그널:", signal)
         return jsonify({"error": "invalid signal"}), 400
 
-    print("📦 주문 응답:", res)
+    print("\U0001F4E6 주문 응답:", res)
     return jsonify(res)
 
 @app.route("/")
 def home():
     return "✅ 서버 정상 작동 중입니다!"
 
-# gunicorn 실행용 entry point
+# ====== 필수: Flask 앱 실행 ======
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)
