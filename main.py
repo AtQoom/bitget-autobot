@@ -8,26 +8,11 @@ import json
 app = Flask(__name__)
 
 # ====== 사용자 설정 ======
-API_KEY = "YOUR_BITGET_API_KEY"
-API_SECRET = "YOUR_BITGET_API_SECRET"
-API_PASSPHRASE = "YOUR_API_PASSPHRASE"
+API_KEY = "bg_ff130b41cb44a15b7f8e9f0870bcd37e"
+API_SECRET = "90029771e071d6a374b0ed4b1aba13511e098111a5f229c8d11cfc92a991a659"
+API_PASSPHRASE = "qoooooom"
 BASE_URL = "https://api.bitget.com"
 SYMBOL = "SOLUSDT_UMCBL"  # 비트겟 선물 심볼
-
-# ====== 복리 수량 계산 함수 ======
-def calculate_order_qty(balance, price, leverage=3, risk_pct=0.1):
-    qty = (balance * risk_pct * leverage) / price
-    return round(qty, 2)
-
-# ====== 실시간 가격 조회 ======
-def get_current_price(symbol):
-    try:
-        url = f"https://api.bitget.com/api/mix/v1/market/ticker?symbol={symbol}"
-        res = requests.get(url, timeout=5).json()
-        return float(res["data"]["last"])
-    except Exception as e:
-        print(f"❌ 가격 조회 오류: {e}")
-        return None
 
 # ====== 인증 헤더 생성 ======
 def get_auth_headers(api_key, api_secret, api_passphrase, method, path, body=''):
@@ -43,6 +28,16 @@ def get_auth_headers(api_key, api_secret, api_passphrase, method, path, body='')
         "Content-Type": "application/json"
     }
 
+# ====== 실시간 가격 조회 ======
+def get_current_price(symbol):
+    try:
+        url = f"https://api.bitget.com/api/mix/v1/market/ticker?symbol={symbol}"
+        res = requests.get(url, timeout=5).json()
+        return float(res["data"]["last"])
+    except Exception as e:
+        print(f"❌ 가격 조회 오류: {e}")
+        return None
+
 # ====== 잔고 조회 ======
 def get_balance():
     path = "/api/mix/v1/account/accounts?productType=UMCBL"
@@ -55,8 +50,52 @@ def get_balance():
             return float(item['available'])
     return 0
 
-# ====== 단일 주문 실행 ======
-def place_order(side, qty):
+# ====== 복리 수량 계산 함수 ======
+def calculate_order_qty(balance, price, leverage=3, risk_pct=0.1):
+    return round((balance * risk_pct * leverage) / price, 2)
+
+# ====== 웹훅 처리 ======
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.json
+    print("🚀 웹훅 신호 수신됨:", data)
+
+    signal = data.get("signal", "").upper()
+    order_action = data.get("order_action", "").lower()
+    step_map = {"STEP 1": 0, "STEP 2": 1, "STEP 3": 2, "STEP 4": 3}
+    step_index = next((step_map[k] for k in step_map if k in signal), None)
+    
+    if step_index is None:
+        print("❌ STEP 정보 없음")
+        return jsonify({"error": "invalid step info"}), 400
+
+    action_type = "entry" if "ENTRY" in signal else "exit"
+    side_map = {
+        ("buy", "entry"): "open_long",
+        ("sell", "entry"): "open_short",
+        ("buy", "exit"): "close_long",
+        ("sell", "exit"): "close_short"
+    }
+    side = side_map.get((order_action, action_type))
+    if not side:
+        print("❌ 유효하지 않은 side 설정")
+        return jsonify({"error": "invalid side"}), 400
+
+    # 실시간 가격, 잔고, 수량 계산
+    price = get_current_price(SYMBOL)
+    if not price:
+        return jsonify({"error": "price fetch failed"}), 500
+
+    balance = get_balance()
+    qty_total = calculate_order_qty(balance, price)
+
+    # 분할 비율 적용
+    ratios_entry = [0.7, 0.1, 0.1, 0.1]
+    ratios_exit = [0.5, 0.2, 0.2, 0.1]
+    ratio = ratios_entry[step_index] if action_type == "entry" else ratios_exit[step_index]
+    qty = round(qty_total * ratio, 3)
+
+    # 주문 전송
     body = {
         "symbol": SYMBOL,
         "marginCoin": "USDT",
@@ -70,41 +109,9 @@ def place_order(side, qty):
     body_json = json.dumps(body)
     headers = get_auth_headers(API_KEY, API_SECRET, API_PASSPHRASE, "POST", path, body_json)
     res = requests.post(url, headers=headers, data=body_json)
+
     print(f"✅ 주문 결과: {res.status_code} - {res.text}")
-    return res.json()
-
-# ====== 웹훅 처리 ======
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    data = request.json
-    print("🚀 웹훅 신호 수신됨:", data)
-
-    signal = data.get("signal", "").upper()
-    price = get_current_price(SYMBOL)
-
-    if not price:
-        print("❌ 실시간 가격 조회 실패")
-        return jsonify({"error": "price fetch failed"}), 400
-
-    balance = get_balance()
-    qty = calculate_order_qty(balance, price)
-
-    order_action = data.get("order_action", "").lower()
-    action_type = "entry" if "ENTRY" in signal else "exit"
-    side_map = {
-        ("buy", "entry"): "open_long",
-        ("sell", "entry"): "open_short",
-        ("buy", "exit"): "close_long",
-        ("sell", "exit"): "close_short"
-    }
-    side = side_map.get((order_action, action_type))
-
-    if not side:
-        print("❌ 올바르지 않은 side 설정")
-        return jsonify({"error": "invalid side"}), 400
-
-    res = place_order(side, qty)
-    return jsonify(res)
+    return jsonify(res.json())
 
 @app.route("/")
 def home():
