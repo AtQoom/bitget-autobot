@@ -5,32 +5,32 @@ import os
 
 app = Flask(__name__)
 
-# 환경변수 또는 직접 입력
+# 환경변수 또는 직접 입력 (보안을 위해 환경변수 추천)
 API_KEY = os.environ.get("bg_ff130b41cb44a15b7f8e9f0870bcd37e", "여기에_API_KEY")
 API_SECRET = os.environ.get("90029771e071d6a374b0ed4b1aba13511e098111a5f229c8d11cfc92a991a659", "여기에_API_SECRET")
 API_PASSPHRASE = os.environ.get("qoooooom", "여기에_API_PASSPHRASE")
 
 BASE_URL = "https://api.bitget.com"
 
-
+# Bitget API 서명 함수
 def sign(secret, timestamp, method, request_path, body=''):
     pre_hash = f"{timestamp}{method.upper()}{request_path}{body}"
     return hmac.new(secret.encode(), pre_hash.encode(), hashlib.sha256).hexdigest()
 
-
+# 웹훅 처리 라우트
 @app.route("/", methods=["POST"])
 def webhook():
-    data = request.get_json()
+    data = request.get_json(force=True)  # <-- 여기에서 JSON 강제 파싱하여 415 오류 방지
     print("🚀 신호 수신됨:", data)
 
     signal = data.get("signal", "").upper()
     symbol = data.get("symbol", "SOLUSDT")
     size = float(data.get("order_contracts", 0.1))
-    product_type = "umcbl"  # 무기한 USDT 계약
+    product_type = "umcbl"
     margin_coin = "USDT"
     side = "buy" if "LONG" in signal else "sell"
 
-    # 분할매수 수량 설정 (예: 20% / 20% / 30% / 30%)
+    # 분할 비율 (4단계)
     steps = [0.2, 0.2, 0.3, 0.3]
 
     for i, step in enumerate(steps, 1):
@@ -61,11 +61,11 @@ def webhook():
 
         response = requests.post(url, headers=headers, data=body)
         print(f"📦 STEP {i} 응답:", response.status_code, response.text)
-        time.sleep(0.5)  # Bitget 제한을 고려한 딜레이
+        time.sleep(0.5)  # Bitget 요청 간 딜레이
 
     return {"status": "ok"}, 200
 
-
+# 기본 확인 라우트
 @app.route("/")
 def home():
     return "✅ 서버 정상 작동 중입니다!"
