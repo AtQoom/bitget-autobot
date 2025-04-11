@@ -1,18 +1,71 @@
 from flask import Flask, request
+import hmac, hashlib, time, json
+import requests
+import os
 
 app = Flask(__name__)
+
+# 환경변수 또는 직접 입력
+API_KEY = os.environ.get("BITGET_API_KEY", "여기에_API_KEY")
+API_SECRET = os.environ.get("BITGET_API_SECRET", "여기에_API_SECRET")
+API_PASSPHRASE = os.environ.get("BITGET_PASSPHRASE", "여기에_API_PASSPHRASE")
+
+BASE_URL = "https://api.bitget.com"
+
+
+def sign(secret, timestamp, method, request_path, body=''):
+    pre_hash = f"{timestamp}{method.upper()}{request_path}{body}"
+    return hmac.new(secret.encode(), pre_hash.encode(), hashlib.sha256).hexdigest()
+
 
 @app.route("/", methods=["POST"])
 def webhook():
     data = request.get_json()
     print("🚀 신호 수신됨:", data)
-    
-    # TODO: 여기에 Bitget API 주문 실행 로직을 넣으세요
+
+    signal = data.get("signal", "").upper()
+    symbol = data.get("symbol", "SOLUSDT")
+    size = float(data.get("order_contracts", 0.1))
+    product_type = "umcbl"  # 무기한 USDT 계약
+    margin_coin = "USDT"
+    side = "buy" if "LONG" in signal else "sell"
+
+    # 분할매수 수량 설정 (예: 20% / 20% / 30% / 30%)
+    steps = [0.2, 0.2, 0.3, 0.3]
+
+    for i, step in enumerate(steps, 1):
+        step_size = round(size * step, 3)
+
+        body_dict = {
+            "symbol": symbol,
+            "marginCoin": margin_coin,
+            "orderType": "market",
+            "side": side,
+            "size": str(step_size),
+            "productType": product_type
+        }
+
+        endpoint = "/api/mix/v1/order/placeOrder"
+        url = BASE_URL + endpoint
+        body = json.dumps(body_dict)
+        timestamp = str(int(time.time() * 1000))
+        signature = sign(API_SECRET, timestamp, "POST", endpoint, body)
+
+        headers = {
+            "ACCESS-KEY": API_KEY,
+            "ACCESS-SIGN": signature,
+            "ACCESS-TIMESTAMP": timestamp,
+            "ACCESS-PASSPHRASE": API_PASSPHRASE,
+            "Content-Type": "application/json"
+        }
+
+        response = requests.post(url, headers=headers, data=body)
+        print(f"📦 STEP {i} 응답:", response.status_code, response.text)
+        time.sleep(0.5)  # Bitget 제한을 고려한 딜레이
+
     return {"status": "ok"}, 200
 
-@app.route("/", methods=["GET"])
+
+@app.route("/")
 def home():
     return "✅ 서버 정상 작동 중입니다!"
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
