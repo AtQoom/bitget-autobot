@@ -1,0 +1,15 @@
+# Python 3.10 이미지 기반
+FROM python:3.10
+
+# 작업 디렉토리 생성
+WORKDIR /app
+
+# requirements.txt 복사 후 패키지 설치
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 앱 파일 복사
+COPY . .
+
+# Flask 서버 실행 (예: main.py에 app 객체가 있음)
+CMD ["python", "main.py"]
