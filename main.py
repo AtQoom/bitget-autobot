@@ -6,9 +6,9 @@ import os
 app = Flask(__name__)
 
 # 환경변수 또는 직접 입력
-API_KEY = os.environ.get("BITGET_API_KEY", "여기에_API_KEY")
-API_SECRET = os.environ.get("BITGET_API_SECRET", "여기에_API_SECRET")
-API_PASSPHRASE = os.environ.get("BITGET_PASSPHRASE", "여기에_API_PASSPHRASE")
+API_KEY = os.environ.get("bg_ff130b41cb44a15b7f8e9f0870bcd37e", "여기에_API_KEY")
+API_SECRET = os.environ.get("90029771e071d6a374b0ed4b1aba13511e098111a5f229c8d11cfc92a991a659", "여기에_API_SECRET")
+API_PASSPHRASE = os.environ.get("qoooooom", "여기에_API_PASSPHRASE")
 
 BASE_URL = "https://api.bitget.com"
 
