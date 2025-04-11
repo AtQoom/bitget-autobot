@@ -12,25 +12,39 @@ API_PASSPHRASE = os.environ.get("qoooooom", "여기에_API_PASSPHRASE")
 
 BASE_URL = "https://api.bitget.com"
 
-# Bitget API 서명 함수
+# 최근 주문 추적용 (중복 방지)
+last_signal = {"id": None, "timestamp": 0}
+
+
 def sign(secret, timestamp, method, request_path, body=''):
     pre_hash = f"{timestamp}{method.upper()}{request_path}{body}"
     return hmac.new(secret.encode(), pre_hash.encode(), hashlib.sha256).hexdigest()
 
-# 웹훅 처리 라우트
+
 @app.route("/", methods=["POST"])
 def webhook():
-    data = request.get_json(force=True)  # <-- 여기에서 JSON 강제 파싱하여 415 오류 방지
+    data = request.get_json()
     print("🚀 신호 수신됨:", data)
+
+    # 중복 방지: order_id와 최근 시간 비교
+    order_id = data.get("order_id")
+    now = time.time()
+    if order_id == last_signal["id"] and (now - last_signal["timestamp"] < 60):
+        print("⚠️ 중복된 신호 무시됨.")
+        return {"status": "duplicate"}, 200
+
+    # 중복으로 처리되지 않으면 기록
+    last_signal["id"] = order_id
+    last_signal["timestamp"] = now
 
     signal = data.get("signal", "").upper()
     symbol = data.get("symbol", "SOLUSDT")
     size = float(data.get("order_contracts", 0.1))
-    product_type = "umcbl"
+    product_type = "umcbl"  # 무기한 USDT 계약
     margin_coin = "USDT"
     side = "buy" if "LONG" in signal else "sell"
 
-    # 분할 비율 (4단계)
+    # 분할매수 수량 설정 (예: 20% / 20% / 30% / 30%)
     steps = [0.2, 0.2, 0.3, 0.3]
 
     for i, step in enumerate(steps, 1):
@@ -61,11 +75,11 @@ def webhook():
 
         response = requests.post(url, headers=headers, data=body)
         print(f"📦 STEP {i} 응답:", response.status_code, response.text)
-        time.sleep(0.5)  # Bitget 요청 간 딜레이
+        time.sleep(0.5)  # Bitget 제한을 고려한 딜레이
 
     return {"status": "ok"}, 200
 
-# 기본 확인 라우트
+
 @app.route("/")
 def home():
     return "✅ 서버 정상 작동 중입니다!"
