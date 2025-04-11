@@ -8,9 +8,9 @@ import json
 app = Flask(__name__)
 
 # ====== 사용자 설정 ======
-API_KEY = "YOUR_BITGET_API_KEY"
-API_SECRET = "YOUR_BITGET_API_SECRET"
-API_PASSPHRASE = "YOUR_API_PASSPHRASE"
+API_KEY = "bg_ff130b41cb44a15b7f8e9f0870bcd37e"
+API_SECRET = "90029771e071d6a374b0ed4b1aba13511e098111a5f229c8d11cfc92a991a659"
+API_PASSPHRASE = "qoooooom"
 BASE_URL = "https://api.bitget.com"
 SYMBOL = "SOLUSDT_UMCBL"  # 비트겟 선물 심볼
 
@@ -50,18 +50,18 @@ def send_split_order(side, price, signal_type):
     balance = get_balance()
     qty_total = calculate_order_qty(balance, price)
 
-    # 비율 설정
+    # ✅ 최종 비율: 매수 7-1-1-1, 매도 5-2-2-1
     if signal_type == "entry":
-        portions = [0.7, 0.1, 0.1, 0.1]  # 매수 진입
+        portions = [0.7, 0.1, 0.1, 0.1]
     elif signal_type == "exit":
-        portions = [0.5, 0.2, 0.2, 0.1]  # 매도 청산
+        portions = [0.5, 0.2, 0.2, 0.1]
     else:
         return [{"error": "Invalid signal_type"}]
 
     responses = []
 
     for portion in portions:
-        qty = round(qty_total * portion, 2)
+        qty = round(qty_total * portion, 3)
         body = {
             "symbol": SYMBOL,
             "marginCoin": "USDT",
@@ -84,7 +84,12 @@ def send_split_order(side, price, signal_type):
 # ====== 웹훅 처리 ======
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.json
+    try:
+        raw_data = request.get_data(as_text=True)
+        data = json.loads(raw_data)
+    except Exception as e:
+        return jsonify({"error": f"Invalid JSON or decoding failed: {str(e)}"}), 400
+
     signal = data.get("signal")
     price = float(data.get("price", 0))
 
@@ -101,6 +106,7 @@ def webhook():
 
     return jsonify(res)
 
+# ====== 헬스 체크 ======
 @app.route("/")
 def home():
     return "✅ 서버 정상 작동 중입니다!"
