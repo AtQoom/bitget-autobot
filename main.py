@@ -8,9 +8,9 @@ import json
 app = Flask(__name__)
 
 # ====== 사용자 설정 ======
-API_KEY = "bg_ff130b41cb44a15b7f8e9f0870bcd37e"
-API_SECRET = "90029771e071d6a374b0ed4b1aba13511e098111a5f229c8d11cfc92a991a659"
-API_PASSPHRASE = "qoooooom"
+API_KEY = "YOUR_BITGET_API_KEY"
+API_SECRET = "YOUR_BITGET_API_SECRET"
+API_PASSPHRASE = "YOUR_API_PASSPHRASE"
 BASE_URL = "https://api.bitget.com"
 SYMBOL = "SOLUSDT_UMCBL"  # 비트겟 선물 심볼
 
@@ -76,7 +76,7 @@ def send_split_order(side, price, signal_type):
         body_json = json.dumps(body)
         headers = get_auth_headers(API_KEY, API_SECRET, API_PASSPHRASE, "POST", path, body_json)
         res = requests.post(url, headers=headers, data=body_json)
-        print(f"\U0001F4E6 STEP {i+1} 주문 결과: {res.status_code} - {res.text}")
+        print(f"📦 STEP {i+1} 주문 결과: {res.status_code} - {res.text}")
         responses.append(res.json())
         time.sleep(0.2)
 
@@ -86,27 +86,32 @@ def send_split_order(side, price, signal_type):
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
-    print("\U0001F680 웹훅 신호 수신됨:", data)
-    signal = data.get("signal")
-    price = float(data.get("price", 0))
+    print("🚀 웹훅 신호 수신됨:", data)
 
-    if signal == "long_entry":
+    signal = data.get("signal", "").upper()
+    price = float(data.get("price", 0)) if "price" in data else 0
+
+    if "ENTRY LONG" in signal:
         print("➡️ 롱 진입 요청 감지됨")
         res = send_split_order("open_long", price, "entry")
-    elif signal == "short_entry":
+
+    elif "ENTRY SHORT" in signal:
         print("➡️ 숏 진입 요청 감지됨")
         res = send_split_order("open_short", price, "entry")
-    elif signal == "long_exit":
+
+    elif "EXIT LONG" in signal:
         print("⬅️ 롱 청산 요청 감지됨")
         res = send_split_order("close_long", price, "exit")
-    elif signal == "short_exit":
+
+    elif "EXIT SHORT" in signal:
         print("⬅️ 숏 청산 요청 감지됨")
         res = send_split_order("close_short", price, "exit")
+
     else:
         print("❌ 유효하지 않은 시그널:", signal)
         return jsonify({"error": "invalid signal"}), 400
 
-    print("\U0001F4E6 주문 응답:", res)
+    print("📦 주문 응답:", res)
     return jsonify(res)
 
 @app.route("/")
