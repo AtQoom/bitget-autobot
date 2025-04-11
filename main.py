@@ -8,11 +8,16 @@ import json
 app = Flask(__name__)
 
 # ====== 사용자 설정 ======
-API_KEY = "bg_ff130b41cb44a15b7f8e9f0870bcd37e"
-API_SECRET = "90029771e071d6a374b0ed4b1aba13511e098111a5f229c8d11cfc92a991a659"
-API_PASSPHRASE = "qoooooom"
+API_KEY = "YOUR_BITGET_API_KEY"
+API_SECRET = "YOUR_BITGET_API_SECRET"
+API_PASSPHRASE = "YOUR_API_PASSPHRASE"
 BASE_URL = "https://api.bitget.com"
 SYMBOL = "SOLUSDT_UMCBL"  # 비트겟 선물 심볼
+
+# ====== 중복 방지 ======
+last_signal_id = None
+last_signal_time = 0
+signal_cooldown = 3  # 초 단위 쿨다운
 
 # ====== 인증 헤더 생성 ======
 def get_auth_headers(api_key, api_secret, api_passphrase, method, path, body=''):
@@ -57,17 +62,27 @@ def calculate_order_qty(balance, price, leverage=3, risk_pct=0.1):
 # ====== 웹훅 처리 ======
 @app.route("/webhook", methods=["POST"])
 def webhook():
+    global last_signal_id, last_signal_time
     data = request.json
     print("🚀 웹훅 신호 수신됨:", data)
 
     signal = data.get("signal", "").upper()
+    order_id = data.get("order_id")
     order_action = data.get("order_action", "").lower()
     step_map = {"STEP 1": 0, "STEP 2": 1, "STEP 3": 2, "STEP 4": 3}
     step_index = next((step_map[k] for k in step_map if k in signal), None)
-    
+
     if step_index is None:
         print("❌ STEP 정보 없음")
         return jsonify({"error": "invalid step info"}), 400
+
+    # 중복 방지
+    now = time.time()
+    if order_id == last_signal_id and now - last_signal_time < signal_cooldown:
+        print("⏱️ 중복 신호 무시됨")
+        return jsonify({"status": "duplicate skipped"}), 200
+    last_signal_id = order_id
+    last_signal_time = now
 
     action_type = "entry" if "ENTRY" in signal else "exit"
     side_map = {
@@ -81,7 +96,6 @@ def webhook():
         print("❌ 유효하지 않은 side 설정")
         return jsonify({"error": "invalid side"}), 400
 
-    # 실시간 가격, 잔고, 수량 계산
     price = get_current_price(SYMBOL)
     if not price:
         return jsonify({"error": "price fetch failed"}), 500
@@ -95,7 +109,6 @@ def webhook():
     ratio = ratios_entry[step_index] if action_type == "entry" else ratios_exit[step_index]
     qty = round(qty_total * ratio, 3)
 
-    # 주문 전송
     body = {
         "symbol": SYMBOL,
         "marginCoin": "USDT",
