@@ -49,15 +49,25 @@ def get_current_price(symbol):
 
 # ====== 잔고 조회 ======
 def get_balance():
-    path = "/api/mix/v1/account/accounts?productType=UMCBL"
-    url = BASE_URL + path
-    headers = get_auth_headers(API_KEY, API_SECRET, API_PASSPHRASE, "GET", path)
-    response = requests.get(url, headers=headers)
-    data = response.json()
-    for item in data['data']:
-        if item['marginCoin'] == 'USDT':
-            return float(item['available'])
-    return 0
+    try:
+        path = "/api/mix/v1/account/accounts?productType=UMCBL"
+        url = BASE_URL + path
+        headers = get_auth_headers(API_KEY, API_SECRET, API_PASSPHRASE, "GET", path)
+        response = requests.get(url, headers=headers)
+        data = response.json()
+
+        if not data or "data" not in data:
+            print("❌ Bitget 잔고 응답 오류:", data)
+            return 0
+
+        for item in data['data']:
+            if item['marginCoin'] == 'USDT':
+                return float(item['available'])
+
+    except Exception as e:
+        print(f"❌ 잔고 조회 예외 발생: {e}")
+        return 0
+
 
 # ====== 복리 수량 계산 함수 ======
 def calculate_order_qty(balance, price, leverage=3, risk_pct=0.09):
