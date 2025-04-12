@@ -1,14 +1,12 @@
-app = "bitget-autobot"
+app = "bitget-autobot"  # Fly.io 앱 이름 (고유해야 함)
 
-kill_signal = "SIGINT"
-kill_timeout = 5
-processes = []
+primary_region = "nrt"  # 도쿄 리전 (빠른 속도를 원한다면)
+
+[build]
+  image = "python:3.10-slim"  # 혹은 Dockerfile을 사용할 수도 있음
 
 [env]
   PORT = "8080"
-
-[experimental]
-  auto_rollback = true
 
 [[services]]
   internal_port = 8080
@@ -21,3 +19,9 @@ processes = []
   [[services.ports]]
     handlers = ["tls", "http"]
     port = 443
+
+  [[services.tcp_checks]]
+    interval = 10000
+    timeout = 2000
+    grace_period = "30s"
+    restart_limit = 0
