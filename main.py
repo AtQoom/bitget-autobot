@@ -56,7 +56,7 @@ def get_balance():
         headers = get_auth_headers(API_KEY, API_SECRET, API_PASSPHRASE, "GET", path)
         response = requests.get(url, headers=headers, timeout=10)
 
-        print("📦 Bitget 응답 원문:", response.status_code, response.text)  # 💥 추가
+        print("📦 Bitget 응답 원문:", response.status_code, response.text)
 
         if response.status_code != 200:
             print(f"❌ Bitget API 에러 - 상태코드 {response.status_code}: {response.text}")
@@ -70,6 +70,7 @@ def get_balance():
         for item in data["data"]:
             if item.get("marginCoin") == "USDT":
                 return float(item.get("availableMargin", 0))
+
         print("❌ USDT 잔고 항목 없음")
         return 0
     except Exception as e:
@@ -126,6 +127,9 @@ def webhook():
         return jsonify({"error": "price fetch failed"}), 500
 
     balance = get_balance()
+    if balance <= 0:
+        return jsonify({"error": "balance fetch failed"}), 500
+
     qty_total = calculate_order_qty(balance, price)
 
     ratios_entry = [0.6, 0.2, 0.1, 0.1]
