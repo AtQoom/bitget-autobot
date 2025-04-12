@@ -9,12 +9,11 @@ from dotenv import load_dotenv
 
 # ====== 환경변수 로드 ======
 load_dotenv()
-
 API_KEY = os.getenv("BITGET_API_KEY")
 API_SECRET = os.getenv("BITGET_API_SECRET")
 API_PASSPHRASE = os.getenv("BITGET_API_PASSPHRASE")
 BASE_URL = "https://api.bitget.com"
-SYMBOL = "SOLUSDT_UMCBL"  # 비트겟 선물 심볼
+SYMBOL = "SOLUSDT_UMCBL"
 
 app = Flask(__name__)
 
@@ -28,7 +27,6 @@ def get_auth_headers(api_key, api_secret, api_passphrase, method, path, body='')
     timestamp = str(int(time.time() * 1000))
     prehash = f"{timestamp}{method.upper()}{path}{body}"
     sign = hmac.new(api_secret.encode(), prehash.encode(), hashlib.sha256).hexdigest()
-
     return {
         "ACCESS-KEY": api_key,
         "ACCESS-SIGN": sign,
@@ -54,20 +52,28 @@ def get_balance():
     headers = get_auth_headers(API_KEY, API_SECRET, API_PASSPHRASE, "GET", path)
     response = requests.get(url, headers=headers)
     data = response.json()
+    if not data or data.get("data") is None:
+        print("❌ 잔고 조회 실패 또는 응답 없음")
+        return 0
     for item in data['data']:
         if item['marginCoin'] == 'USDT':
             return float(item['available'])
     return 0
 
-# ====== 복리 수량 계산 함수 ======
+# ====== 주문 수량 계산 ======
 def calculate_order_qty(balance, price, leverage=3, risk_pct=0.09):
     return round((balance * risk_pct * leverage) / price, 2)
 
-# ====== 웹훅 처리 ======
+# ====== 웹훅 엔드포인트 ======
 @app.route("/webhook", methods=["POST"])
 def webhook():
     global last_signal_id, last_signal_time
-    data = request.json
+
+    # 415 오류 방지: JSON or Form 둘 다 허용
+    data = request.get_json(silent=True)
+    if not data:
+        data = request.form.to_dict()
+
     print("🚀 웹훅 신호 수신됨:", data)
 
     signal = data.get("signal", "").upper()
@@ -107,7 +113,7 @@ def webhook():
     balance = get_balance()
     qty_total = calculate_order_qty(balance, price)
 
-    # ✅ 분할 비율 (v10.14 전략과 일치)
+    # ✅ 마지막 전략과 동일한 분할 비율
     ratios_entry = [0.6, 0.2, 0.1, 0.1]
     ratios_exit = [0.22, 0.20, 0.28, 0.30]
     ratio = ratios_entry[step_index] if action_type == "entry" else ratios_exit[step_index]
@@ -121,6 +127,7 @@ def webhook():
         "orderType": "market",
         "timeInForceValue": "normal"
     }
+
     path = "/api/mix/v1/order/placeOrder"
     url = BASE_URL + path
     body_json = json.dumps(body)
@@ -134,6 +141,6 @@ def webhook():
 def home():
     return "✅ 서버 정상 작동 중입니다!"
 
-# ====== Flask 앱 실행 ======
+# ====== 실행 ======
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
