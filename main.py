@@ -86,10 +86,12 @@ def calculate_order_qty(balance, price, leverage=3, risk_pct=0.09):
 def webhook():
     global last_signal_id, last_signal_time
 
-    if not request.is_json:
-        return jsonify({"error": "Invalid Content-Type, expected application/json"}), 415
+    try:
+        data = request.get_json(force=True)
+    except Exception as e:
+        print("❌ JSON 파싱 실패:", e)
+        return jsonify({"error": "Invalid JSON"}), 400
 
-    data = request.get_json()
     print("🚀 웹훅 신호 수신됨:", data)
 
     signal = data.get("signal", "").upper()
@@ -102,7 +104,6 @@ def webhook():
         print("❌ STEP 정보 없음")
         return jsonify({"error": "invalid step info"}), 400
 
-    # 중복 방지
     now = time.time()
     if order_id == last_signal_id and now - last_signal_time < signal_cooldown:
         print("⏱️ 중복 신호 무시됨")
