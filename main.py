@@ -4,15 +4,19 @@ import hashlib
 import time
 import requests
 import json
+import os
+from dotenv import load_dotenv
 
-app = Flask(__name__)
+# ====== 환경변수 로드 ======
+load_dotenv()
 
-# ====== 사용자 설정 ======
-API_KEY = "YOUR_BITGET_API_KEY"
-API_SECRET = "YOUR_BITGET_API_SECRET"
-API_PASSPHRASE = "YOUR_API_PASSPHRASE"
+API_KEY = os.getenv("BITGET_API_KEY")
+API_SECRET = os.getenv("BITGET_API_SECRET")
+API_PASSPHRASE = os.getenv("BITGET_API_PASSPHRASE")
 BASE_URL = "https://api.bitget.com"
 SYMBOL = "SOLUSDT_UMCBL"  # 비트겟 선물 심볼
+
+app = Flask(__name__)
 
 # ====== 중복 방지 ======
 last_signal_id = None
@@ -56,7 +60,7 @@ def get_balance():
     return 0
 
 # ====== 복리 수량 계산 함수 ======
-def calculate_order_qty(balance, price, leverage=3, risk_pct=0.1):
+def calculate_order_qty(balance, price, leverage=3, risk_pct=0.09):
     return round((balance * risk_pct * leverage) / price, 2)
 
 # ====== 웹훅 처리 ======
@@ -103,9 +107,9 @@ def webhook():
     balance = get_balance()
     qty_total = calculate_order_qty(balance, price)
 
-    # 분할 비율 적용
-    ratios_entry = [0.7, 0.1, 0.1, 0.1]
-    ratios_exit = [0.5, 0.2, 0.2, 0.1]
+    # ✅ 분할 비율 (v10.14 전략과 일치)
+    ratios_entry = [0.6, 0.2, 0.1, 0.1]
+    ratios_exit = [0.22, 0.20, 0.28, 0.30]
     ratio = ratios_entry[step_index] if action_type == "entry" else ratios_exit[step_index]
     qty = round(qty_total * ratio, 3)
 
