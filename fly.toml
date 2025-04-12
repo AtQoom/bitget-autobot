@@ -1,7 +1,7 @@
-app = "bitget-autobot"  # Fly 앱 이름 그대로 유지
+app = "bitget-autobot"  # ← 이 줄이 반드시 있어야 해. 앱 이름은 Fly.io 대시보드에 있는 이름 그대로!
 
 [build]
-  dockerfile = "Dockerfile"  # 이 줄이 가장 중요해!!
+  dockerfile = "Dockerfile"
 
 [env]
   PORT = "8080"
