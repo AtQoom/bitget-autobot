@@ -81,7 +81,11 @@ def calculate_order_qty(balance, price, leverage=3, risk_pct=0.09):
 @app.route("/webhook", methods=["POST"])
 def webhook():
     global last_signal_id, last_signal_time
-    data = request.json
+
+    if not request.is_json:
+        return jsonify({"error": "Invalid Content-Type, expected application/json"}), 415
+
+    data = request.get_json()
     print("🚀 웹훅 신호 수신됨:", data)
 
     signal = data.get("signal", "").upper()
