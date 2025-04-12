@@ -5,14 +5,12 @@ import time
 import requests
 import json
 import os
-from dotenv import load_dotenv
 
-# ====== 환경변수 로드 ======
-load_dotenv()
+# ====== 환경변수 직접 설정 ======
+API_KEY = os.environ.get("BITGET_API_KEY")
+API_SECRET = os.environ.get("BITGET_API_SECRET")
+API_PASSPHRASE = os.environ.get("BITGET_API_PASSPHRASE")
 
-API_KEY = os.getenv("BITGET_API_KEY")
-API_SECRET = os.getenv("BITGET_API_SECRET")
-API_PASSPHRASE = os.getenv("BITGET_API_PASSPHRASE")
 BASE_URL = "https://api.bitget.com"
 SYMBOL = "SOLUSDT_UMCBL"  # 비트겟 선물 심볼
 
@@ -25,6 +23,9 @@ signal_cooldown = 3  # 초 단위 쿨다운
 
 # ====== 인증 헤더 생성 ======
 def get_auth_headers(api_key, api_secret, api_passphrase, method, path, body=''):
+    if not all([api_key, api_secret, api_passphrase]):
+        raise ValueError("❌ Bitget API 키 또는 패스프레이즈가 누락되었습니다. 환경변수 설정을 확인하세요.")
+
     timestamp = str(int(time.time() * 1000))
     prehash = f"{timestamp}{method.upper()}{path}{body}"
     sign = hmac.new(api_secret.encode(), prehash.encode(), hashlib.sha256).hexdigest()
