@@ -56,6 +56,8 @@ def get_balance():
         headers = get_auth_headers(API_KEY, API_SECRET, API_PASSPHRASE, "GET", path)
         response = requests.get(url, headers=headers, timeout=10)
 
+        print("📦 Bitget 응답 원문:", response.status_code, response.text)  # 💥 추가
+
         if response.status_code != 200:
             print(f"❌ Bitget API 에러 - 상태코드 {response.status_code}: {response.text}")
             return 0
@@ -67,7 +69,8 @@ def get_balance():
 
         for item in data["data"]:
             if item.get("marginCoin") == "USDT":
-                return float(item.get("available", 0))
+                return float(item.get("availableMargin", 0))
+        print("❌ USDT 잔고 항목 없음")
         return 0
     except Exception as e:
         print(f"❌ 잔고 조회 중 예외 발생: {e}")
