@@ -47,7 +47,7 @@ def get_current_price(symbol):
         print(f"❌ 가격 조회 오류: {e}")
         return None
 
-# ====== 잔고 조회 (강화된 예외 처리) ======
+# ====== 잔고 조회 ======
 def get_balance():
     try:
         path = "/api/mix/v1/account/accounts?productType=UMCBL"
@@ -60,7 +60,6 @@ def get_balance():
             return 0
 
         data = response.json()
-
         if not data or "data" not in data or not isinstance(data["data"], list):
             print("❌ 잔고 응답 형식 오류 또는 데이터 없음:", data)
             return 0
@@ -73,7 +72,7 @@ def get_balance():
         print(f"❌ 잔고 조회 중 예외 발생: {e}")
         return 0
 
-# ====== 복리 수량 계산 함수 ======
+# ====== 주문 수량 계산 ======
 def calculate_order_qty(balance, price, leverage=3, risk_pct=0.09):
     return round((balance * risk_pct * leverage) / price, 2)
 
@@ -125,7 +124,6 @@ def webhook():
     balance = get_balance()
     qty_total = calculate_order_qty(balance, price)
 
-    # ✅ 분할 비율 (v10.14 전략과 일치)
     ratios_entry = [0.6, 0.2, 0.1, 0.1]
     ratios_exit = [0.22, 0.20, 0.28, 0.30]
     ratio = ratios_entry[step_index] if action_type == "entry" else ratios_exit[step_index]
@@ -152,6 +150,6 @@ def webhook():
 def home():
     return "✅ 서버 정상 작동 중입니다!"
 
-# ====== Flask 앱 실행 ======
+# ====== 앱 실행 ======
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
