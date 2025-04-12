@@ -1,9 +1,9 @@
-app = "bitget-autobot"  # Fly.io 앱 이름 (고유해야 함)
-
-primary_region = "nrt"  # 도쿄 리전 (빠른 속도를 원한다면)
+app = "bitget-autobot"
+primary_region = "nrt"
 
 [build]
-  image = "python:3.10-slim"  # 혹은 Dockerfile을 사용할 수도 있음
+  builder = "Dockerfile"
+
 
 [env]
   PORT = "8080"
