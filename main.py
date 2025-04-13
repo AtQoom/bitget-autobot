@@ -113,23 +113,27 @@ def webhook():
     path = "/api/mix/v1/order/placeOrder"
     url = BASE_URL + path
     body_json = json.dumps(body)
-    headers = get_auth_headers(API_KEY, API_SECRET, API_PASSPHRASE, "POST", path, body_json)
-
-    # 👉 요청 정보 디버깅용 출력
-    print("💡 요청 보낼 URL:", url)
-    print("💡 요청 바디:", body_json)
-    print("💡 요청 헤더:", headers)
-
-    res = requests.post(url, headers=headers, data=body_json)
-    print(f"✅ 주문 결과: {res.status_code} - {res.text}")
 
     try:
-        result = res.json()
-    except Exception as e:
-        print("❌ 응답 JSON 파싱 실패:", e)
-        return jsonify({"error": "invalid response from Bitget"}), 502
+        headers = get_auth_headers(API_KEY, API_SECRET, API_PASSPHRASE, "POST", path, body_json)
+        print("💡 요청 보낼 URL:", url)
+        print("💡 요청 바디:", body_json)
+        print("💡 요청 헤더:", headers)
 
-    return jsonify(result)
+        res = requests.post(url, headers=headers, data=body_json)
+        print(f"✅ 주문 결과: {res.status_code} - {res.text}")
+
+        try:
+            result = res.json()
+        except Exception as e:
+            print("❌ 응답 JSON 파싱 실패:", e)
+            return jsonify({"error": "invalid response from Bitget"}), 502
+
+        return jsonify(result)
+
+    except Exception as e:
+        print("❌ Bitget 주문 요청 중 에러:", e)
+        return jsonify({"error": "bitget request failed"}), 502
 
 @app.route("/")
 def home():
