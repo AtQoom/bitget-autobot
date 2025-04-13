@@ -99,7 +99,7 @@ def calculate_qty(order_id, balance, price):
     adjusted_qty = usdt_amount / (price * (1 + SLIPPAGE))
     return round(adjusted_qty, 3)
 
-# ====== 웹흘 처리 ======
+# ====== 웹훅 처리 ======
 @app.route("/webhook", methods=["POST"])
 def webhook():
     global last_signal_times
@@ -110,7 +110,7 @@ def webhook():
         print("❌ JSON 파싱 실패:", e)
         return jsonify({"error": "Invalid JSON"}), 400
 
-    print("🚀 웹흘 신호 수신됨:", data)
+    print("🚀 웹훅 신호 수신됨:", data)
 
     signal = data.get("signal", "").upper()
     order_id = data.get("order_id")
@@ -149,6 +149,10 @@ def webhook():
 @app.route("/")
 def home():
     return "✅ Bybit 자동매매 서버 작동 중입니다!"
+
+@app.route("/ping")
+def ping():
+    return jsonify({"status": "alive", "time": time.time()})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
