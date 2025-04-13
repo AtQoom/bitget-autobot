@@ -15,9 +15,7 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
 print("🔐 API_KEY:", API_KEY)
-print("🔐 API_SECRET:", "✔️ 로드 완료됨" if API_SECRET else "❌ 없음")
-print("📢 TELEGRAM_TOKEN:", "✔️ 있음" if TELEGRAM_TOKEN else "❌ 없음")
-print("💬 TELEGRAM_CHAT_ID:", TELEGRAM_CHAT_ID)
+print("🔐 API_SECRET:", API_SECRET)
 
 # ====== 환경변수 누락 검사 ======
 if not API_KEY or not API_SECRET:
@@ -28,7 +26,7 @@ SYMBOL = "SOLUSDT.P"
 LEVERAGE = 3
 SLIPPAGE = 0.0035  # 0.35%
 
-# ====== 최근 실행된 신호 캐시 (order_id + timestamp 기준) ======
+# ====== 최근 실행된 신호 캐시 (order_id + 정확한 timestamp 기준) ======
 executed_signals = set()
 signal_cooldown_sec = 1.5  # 최소 간격
 
@@ -54,6 +52,12 @@ def send_telegram(message):
         except:
             print("⚠️ 텔레그램 전송 실패")
 
+# ====== 서명 생성 ======
+def generate_signature(secret, params):
+    sorted_params = sorted(params.items())
+    query = "&".join([f"{k}={v}" for k, v in sorted_params])
+    return hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+
 # ====== 잔고 기반 계산 (잔고 조회) ======
 def get_wallet_balance():
     try:
@@ -69,7 +73,6 @@ def get_wallet_balance():
 
         response = requests.get(f"{BASE_URL}/v5/account/wallet-balance", params=params, headers=headers, timeout=10)
         data = response.json()
-        print("📥 잔고 응답:", data)
         usdt_balance = 0
         for coin in data.get("result", {}).get("list", [])[0].get("coin", []):
             if coin["coin"] == "USDT":
@@ -86,18 +89,11 @@ def get_current_price():
     try:
         response = requests.get(f"{BASE_URL}/v5/market/tickers?category=linear&symbol={SYMBOL}", timeout=5)
         data = response.json()
-        print("💰 현재가 응답:", data)
         return float(data["result"]["list"][0]["lastPrice"])
     except Exception as e:
         print("❌ 현재가 조회 실패:", e)
         send_telegram(f"❌ 현재가 조회 실패: {e}")
         return None
-
-# ====== 서명 생성 ======
-def generate_signature(secret, params):
-    sorted_params = sorted(params.items())
-    query = "&".join([f"{k}={v}" for k, v in sorted_params])
-    return hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
 
 # ====== 시장가 주문 요청 ======
 def place_market_order(side, symbol, qty):
@@ -115,11 +111,10 @@ def place_market_order(side, symbol, qty):
     }
     params["sign"] = generate_signature(API_SECRET, params)
     headers = {"Content-Type": "application/json"}
-    print("📤 주문 요청 파라미터:", params)
     response = requests.post(url, json=params, headers=headers, timeout=10)
     return response
 
-# ====== 수량 계산 ======
+# ====== 수량 계산 (슬리피지 반영) ======
 def calculate_qty(order_id, balance, price):
     weight = weight_map.get(order_id, 0)
     usdt_amount = balance * weight * LEVERAGE
@@ -149,26 +144,20 @@ def webhook():
     now = time.time()
     signal_key = f"{order_id}_{int(now)}"
     if signal_key in executed_signals:
-        print("⚠️ 중복 신호 차단:", signal_key)
         return jsonify({"status": f"{order_id} skipped (duplicate second)"}), 200
     executed_signals.add(signal_key)
 
     side = "buy" if order_action == "buy" else "sell"
-
-    print("🧮 잔고 조회 중...")
     balance = get_wallet_balance()
-    print("💰 현재 잔고:", balance)
     if balance == 0:
         return jsonify({"error": "Insufficient balance or failed to fetch"}), 500
 
-    print("📡 현재가 조회 중...")
     price = get_current_price()
-    print("💵 현재 가격:", price)
     if not price:
         return jsonify({"error": "Price fetch failed"}), 500
 
     qty = calculate_qty(order_id, balance, price)
-    print(f"📊 주문 수량 계산됨: {qty} (비중 {weight_map.get(order_id, 0)*100:.0f}%)")
+    print(f"📊 주문 수량: {qty} (잔고: {balance} USDT, 현재가: {price})")
 
     try:
         response = place_market_order(side, SYMBOL, qty)
@@ -188,7 +177,5 @@ def home():
 def ping():
     return jsonify({"status": "alive", "time": time.time()})
 
-# ====== 서버 실행 ======
 if __name__ == "__main__":
-    print("🚀 Flask 서버 시작 중... (8080 포트)")
-    app.run(host="0.0.0.0", port=8080, debug=False, use_reloader=False)
+    app.run(host="0.0.0.0", port=8080)
