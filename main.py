@@ -5,6 +5,7 @@ import time
 import requests
 import json
 import os
+import traceback
 
 # ====== 환경변수 직접 설정 ======
 API_KEY = os.environ.get("BITGET_API_KEY")
@@ -132,8 +133,9 @@ def webhook():
         return jsonify(result)
 
     except Exception as e:
-        print("❌ Bitget 주문 요청 중 에러:", e)
-        return jsonify({"error": "bitget request failed"}), 502
+        print("❌ Bitget 주문 요청 중 에러 발생:")
+        traceback.print_exc()
+        return jsonify({"error": "bitget request failed", "detail": str(e)}), 502
 
 @app.route("/")
 def home():
