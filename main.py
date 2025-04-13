@@ -14,8 +14,8 @@ API_SECRET = os.environ.get("BYBIT_SECRET")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-print("🔐 API_KEY:", API_KEY)
-print("🔐 API_SECRET:", API_SECRET)
+print("🔐 API_KEY:", Qldn5aEfmxSpqkOdDp)
+print("🔐 API_SECRET:", pIsYozV8TWQNOA6Zhc6IfkMGqG0gzwlK4QLv)
 
 # ====== 환경변수 누락 검사 ======
 if not API_KEY or not API_SECRET:
