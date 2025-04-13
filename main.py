@@ -5,28 +5,24 @@ import time
 import requests
 import json
 import os
-import traceback
 
-# ====== 환경변수 직접 설정 ======
+# ====== 환경변수에서 API 정보 읽기 ======
 API_KEY = os.environ.get("BITGET_API_KEY")
 API_SECRET = os.environ.get("BITGET_API_SECRET")
 API_PASSPHRASE = os.environ.get("BITGET_API_PASSPHRASE")
 
 BASE_URL = "https://api.bitget.com"
-SYMBOL = "SOLUSDT_UMCBL"  # 비트겟 선물 심볼
+SYMBOL = "SOLUSDT_UMCBL"  # Bitget 선물 심볼
 
 app = Flask(__name__)
 
-# ====== 중복 방지 ======
+# ====== 중복 신호 방지 설정 ======
 last_signal_id = None
 last_signal_time = 0
-signal_cooldown = 3  # 초 단위 쿨다운
+signal_cooldown = 3  # 초 단위
 
 # ====== 인증 헤더 생성 ======
 def get_auth_headers(api_key, api_secret, api_passphrase, method, path, body=''):
-    if not all([api_key, api_secret, api_passphrase]):
-        raise ValueError("❌ Bitget API 키 또는 패스프레이즈가 누락되었습니다. 환경변수 설정을 확인하세요.")
-
     timestamp = str(int(time.time() * 1000))
     prehash = f"{timestamp}{method.upper()}{path}{body}"
     sign = hmac.new(api_secret.encode(), prehash.encode(), hashlib.sha256).hexdigest()
@@ -42,42 +38,41 @@ def get_auth_headers(api_key, api_secret, api_passphrase, method, path, body='')
 # ====== 실시간 가격 조회 ======
 def get_current_price(symbol):
     try:
-        url = f"https://api.bitget.com/api/mix/v1/market/ticker?symbol={symbol}"
+        url = f"{BASE_URL}/api/mix/v1/market/ticker?symbol={symbol}"
         res = requests.get(url, timeout=5).json()
         return float(res["data"]["last"])
     except Exception as e:
-        print(f"❌ 가격 조회 오류: {e}")
+        print(f"❌ 가격 조회 실패: {e}")
         return None
 
-# ====== 잔고 조회 함수 ======
+# ====== 잔고 조회 ======
 def get_balance():
     try:
-        path = "/api/mix/v1/account/accounts?productType=umcbl"
+        path = "/api/mix/v1/account/accounts"
         url = BASE_URL + path
         headers = get_auth_headers(API_KEY, API_SECRET, API_PASSPHRASE, "GET", path)
-        res = requests.get(url, headers=headers)
+        res = requests.get(url, headers=headers, timeout=5)
+        print("🧾 잔고 응답:", res.text)
         data = res.json()
-        print("💰 잔고 조회 결과:", data)
-
-        for item in data.get("data", []):
-            if item.get("marginCoin") == "USDT":
-                return float(item.get("available", 0))
-        return 0
+        for item in data.get('data', []):
+            if item['marginCoin'] == "USDT":
+                print(f"💰 잔고: {item['available']}")
+                return float(item['available'])
     except Exception as e:
-        print("❌ 잔고 조회 오류:")
-        traceback.print_exc()
-        return 0
+        print(f"❌ 잔고 조회 실패: {e}")
+    return None
 
 # ====== 주문 수량 계산 ======
-def calculate_fixed_qty(step_index, price):
-    fixed_qty = [0.6, 0.2, 0.1, 0.1]  # 수량 비율 고정
-    base_size = 5  # 기본 주문 수량 기준값
+def calculate_fixed_qty(step_index):
+    fixed_qty = [0.6, 0.2, 0.1, 0.1]  # 비율
+    base_size = 5
     return round(base_size * fixed_qty[step_index], 3)
 
 # ====== 웹훅 처리 ======
 @app.route("/webhook", methods=["POST"])
 def webhook():
     global last_signal_id, last_signal_time
+    print("🧪 웹훅 엔드포인트 실행됨!")
 
     try:
         data = request.get_json(force=True)
@@ -85,7 +80,6 @@ def webhook():
         print("❌ JSON 파싱 실패:", e)
         return jsonify({"error": "Invalid JSON"}), 400
 
-    print("\n====== 📦 주문 시작 ======")
     print("🚀 웹훅 신호 수신됨:", data)
 
     signal = data.get("signal", "").upper()
@@ -95,12 +89,8 @@ def webhook():
     step_index = next((step_map[k] for k in step_map if k in signal), None)
 
     if step_index is None:
-        print("❌ STEP 정보 없음")
+        print("❌ 유효하지 않은 STEP 정보")
         return jsonify({"error": "invalid step info"}), 400
-
-    if order_action not in ["buy", "sell"]:
-        print(f"❌ 잘못된 order_action 값: {order_action}")
-        return jsonify({"error": "invalid order_action"}), 400
 
     now = time.time()
     if order_id == last_signal_id and now - last_signal_time < signal_cooldown:
@@ -118,19 +108,15 @@ def webhook():
     }
     side = side_map.get((order_action, action_type))
     if not side:
-        print("❌ 유효하지 않은 side 설정")
+        print("❌ 잘못된 주문 방향")
         return jsonify({"error": "invalid side"}), 400
 
     price = get_current_price(SYMBOL)
     if not price:
         return jsonify({"error": "price fetch failed"}), 500
 
-    qty = calculate_fixed_qty(step_index, price)
-
-    balance = get_balance()
-    if balance < price * qty:
-        print("❌ 잔고 부족으로 주문 불가")
-        return jsonify({"error": "insufficient balance"}), 400
+    qty = calculate_fixed_qty(step_index)
+    print(f"📦 주문 수량: {qty}")
 
     body = {
         "symbol": SYMBOL,
@@ -140,31 +126,22 @@ def webhook():
         "orderType": "market",
         "timeInForceValue": "normal"
     }
+
     path = "/api/mix/v1/order/placeOrder"
     url = BASE_URL + path
     body_json = json.dumps(body)
+    headers = get_auth_headers(API_KEY, API_SECRET, API_PASSPHRASE, "POST", path, body_json)
+
+    print("📤 주문 요청:", body_json)
+    print("📬 요청 헤더:", headers)
 
     try:
-        headers = get_auth_headers(API_KEY, API_SECRET, API_PASSPHRASE, "POST", path, body_json)
-        print("💡 요청 보낼 URL:", url)
-        print("💡 요청 바디:", body_json)
-        print("💡 요청 헤더:", headers)
-
         res = requests.post(url, headers=headers, data=body_json)
-        print(f"✅ 주문 응답 상태코드: {res.status_code}")
-
-        if "application/json" not in res.headers.get("Content-Type", ""):
-            print("❌ Bitget에서 JSON이 아닌 응답 수신:", res.text)
-            return jsonify({"error": "non-json response from Bitget"}), 502
-
-        result = res.json()
-        print("📦 주문 결과 JSON:", result)
-        return jsonify(result)
-
+        print(f"✅ 주문 응답: {res.status_code} - {res.text}")
+        return jsonify(res.json())
     except Exception as e:
-        print("❌ Bitget 주문 요청 중 에러 발생:")
-        traceback.print_exc()
-        return jsonify({"error": "bitget request failed", "detail": str(e)}), 502
+        print(f"❌ 주문 요청 실패: {e}")
+        return jsonify({"error": "order failed"}), 500
 
 @app.route("/")
 def home():
