@@ -16,9 +16,8 @@ SYMBOL = "SOLUSDT.P"
 LEVERAGE = 3
 SLIPPAGE = 0.0035  # 0.35%
 
-# ====== 중복 신호 방지 ======
-last_signal_id = None
-last_signal_time = 0
+# ====== 중복 신호 방지 (order_id별 시간 저장) ======
+last_signal_times = {}
 signal_cooldown = 3  # 초
 
 # ====== 비율 기반 수량 ======
@@ -100,10 +99,10 @@ def calculate_qty(order_id, balance, price):
     adjusted_qty = usdt_amount / (price * (1 + SLIPPAGE))
     return round(adjusted_qty, 3)
 
-# ====== 웹훅 처리 ======
+# ====== 웹흘 처리 ======
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    global last_signal_id, last_signal_time
+    global last_signal_times
 
     try:
         data = request.get_json(force=True)
@@ -111,21 +110,21 @@ def webhook():
         print("❌ JSON 파싱 실패:", e)
         return jsonify({"error": "Invalid JSON"}), 400
 
-    print("🚀 웹훅 신호 수신됨:", data)
+    print("🚀 웹흘 신호 수신됨:", data)
 
     signal = data.get("signal", "").upper()
     order_id = data.get("order_id")
     order_action = data.get("order_action", "").lower()
 
-    now = time.time()
-    if order_id == last_signal_id and now - last_signal_time < signal_cooldown:
-        return jsonify({"status": "duplicate skipped"}), 200
-
-    last_signal_id = order_id
-    last_signal_time = now
-
     if not order_action or not order_id:
         return jsonify({"error": "Invalid webhook data"}), 400
+
+    now = time.time()
+    last_time = last_signal_times.get(order_id, 0)
+    if now - last_time < signal_cooldown:
+        return jsonify({"status": f"{order_id} skipped (cooldown)"}), 200
+
+    last_signal_times[order_id] = now
 
     side = "buy" if order_action == "buy" else "sell"
     balance = get_wallet_balance()
