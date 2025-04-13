@@ -66,6 +66,7 @@ def webhook():
         print("❌ JSON 파싱 실패:", e)
         return jsonify({"error": "Invalid JSON"}), 400
 
+    print("\n====== 📦 주문 시작 ======")
     print("🚀 웹훅 신호 수신됨:", data)
 
     signal = data.get("signal", "").upper()
@@ -77,6 +78,10 @@ def webhook():
     if step_index is None:
         print("❌ STEP 정보 없음")
         return jsonify({"error": "invalid step info"}), 400
+
+    if order_action not in ["buy", "sell"]:
+        print(f"❌ 잘못된 order_action 값: {order_action}")
+        return jsonify({"error": "invalid order_action"}), 400
 
     now = time.time()
     if order_id == last_signal_id and now - last_signal_time < signal_cooldown:
@@ -122,14 +127,14 @@ def webhook():
         print("💡 요청 헤더:", headers)
 
         res = requests.post(url, headers=headers, data=body_json)
-        print(f"✅ 주문 결과: {res.status_code} - {res.text}")
+        print(f"✅ 주문 응답 상태코드: {res.status_code}")
 
-        try:
-            result = res.json()
-        except Exception as e:
-            print("❌ 응답 JSON 파싱 실패:", e)
-            return jsonify({"error": "invalid response from Bitget"}), 502
+        if "application/json" not in res.headers.get("Content-Type", ""):
+            print("❌ Bitget에서 JSON이 아닌 응답 수신:", res.text)
+            return jsonify({"error": "non-json response from Bitget"}), 502
 
+        result = res.json()
+        print("📦 주문 결과 JSON:", result)
         return jsonify(result)
 
     except Exception as e:
