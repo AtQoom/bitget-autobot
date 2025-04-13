@@ -123,7 +123,13 @@ def webhook():
     res = requests.post(url, headers=headers, data=body_json)
     print(f"✅ 주문 결과: {res.status_code} - {res.text}")
 
-    return jsonify(res.json())
+    try:
+        result = res.json()
+    except Exception as e:
+        print("❌ 응답 JSON 파싱 실패:", e)
+        return jsonify({"error": "invalid response from Bitget"}), 502
+
+    return jsonify(result)
 
 @app.route("/")
 def home():
