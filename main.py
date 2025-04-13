@@ -13,6 +13,8 @@ API_KEY = os.environ.get("BYBIT_API_KEY")
 API_SECRET = os.environ.get("BYBIT_SECRET")
 BASE_URL = "https://api.bybit.com"
 SYMBOL = "SOLUSDT.P"
+LEVERAGE = 3
+SLIPPAGE = 0.0035  # 0.35%
 
 # ====== 중복 신호 방지 ======
 last_signal_id = None
@@ -30,8 +32,41 @@ weight_map = {
     "Short 3": 0.20,
     "Short 4": 0.10
 }
-BASE_USDT = 1000
-LEVERAGE = 5
+
+# ====== 잔고 기반 계산 (잔고 조회) ======
+def get_wallet_balance():
+    try:
+        timestamp = str(int(time.time() * 1000))
+        params = {
+            "apiKey": API_KEY,
+            "timestamp": timestamp,
+            "accountType": "UNIFIED"
+        }
+        sign = generate_signature(API_SECRET, params)
+        params["sign"] = sign
+        headers = {"Content-Type": "application/json"}
+
+        response = requests.get(f"{BASE_URL}/v5/account/wallet-balance", params=params, headers=headers, timeout=10)
+        data = response.json()
+        usdt_balance = 0
+        for coin in data.get("result", {}).get("list", [])[0].get("coin", []):
+            if coin["coin"] == "USDT":
+                usdt_balance = float(coin["availableToTrade"])
+                break
+        return usdt_balance
+    except Exception as e:
+        print("❌ 잔고 조회 실패:", e)
+        return 0
+
+# ====== 현재가 조회 ======
+def get_current_price():
+    try:
+        response = requests.get(f"{BASE_URL}/v5/market/tickers?category=linear&symbol={SYMBOL}", timeout=5)
+        data = response.json()
+        return float(data["result"]["list"][0]["lastPrice"])
+    except Exception as e:
+        print("❌ 현재가 조회 실패:", e)
+        return None
 
 # ====== 서명 생성 ======
 def generate_signature(secret, params):
@@ -58,10 +93,12 @@ def place_market_order(side, symbol, qty):
     response = requests.post(url, json=params, headers=headers, timeout=10)
     return response
 
-# ====== 수량 계산 ======
-def calculate_qty(order_id):
+# ====== 수량 계산 (슬리피지 반영) ======
+def calculate_qty(order_id, balance, price):
     weight = weight_map.get(order_id, 0)
-    return round(BASE_USDT * weight * LEVERAGE, 3)
+    usdt_amount = balance * weight * LEVERAGE
+    adjusted_qty = usdt_amount / (price * (1 + SLIPPAGE))
+    return round(adjusted_qty, 3)
 
 # ====== 웹훅 처리 ======
 @app.route("/webhook", methods=["POST"])
@@ -91,8 +128,16 @@ def webhook():
         return jsonify({"error": "Invalid webhook data"}), 400
 
     side = "buy" if order_action == "buy" else "sell"
-    qty = calculate_qty(order_id)
-    print(f"📊 주문 수량: {qty} USDT 기준")
+    balance = get_wallet_balance()
+    if balance == 0:
+        return jsonify({"error": "Insufficient balance or failed to fetch"}), 500
+
+    price = get_current_price()
+    if not price:
+        return jsonify({"error": "Price fetch failed"}), 500
+
+    qty = calculate_qty(order_id, balance, price)
+    print(f"📊 주문 수량: {qty} (잔고: {balance} USDT, 현재가: {price})")
 
     try:
         response = place_market_order(side, SYMBOL, qty)
