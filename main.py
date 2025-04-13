@@ -48,38 +48,11 @@ def get_current_price(symbol):
         print(f"❌ 가격 조회 오류: {e}")
         return None
 
-# ====== 잔고 조회 ======
-def get_balance():
-    try:
-        path = "/api/mix/v1/account/accounts?productType=UMCBL"
-        url = BASE_URL + path
-        headers = get_auth_headers(API_KEY, API_SECRET, API_PASSPHRASE, "GET", path)
-        response = requests.get(url, headers=headers, timeout=10)
-
-        print("📦 Bitget 응답 원문:", response.status_code, response.text)
-
-        if response.status_code != 200:
-            print(f"❌ Bitget API 에러 - 상태코드 {response.status_code}: {response.text}")
-            return 0
-
-        data = response.json()
-        if not data or "data" not in data or not isinstance(data["data"], list):
-            print("❌ 잔고 응답 형식 오류 또는 데이터 없음:", data)
-            return 0
-
-        for item in data["data"]:
-            if item.get("marginCoin") == "USDT":
-                return float(item.get("availableMargin", 0))
-
-        print("❌ USDT 잔고 항목 없음")
-        return 0
-    except Exception as e:
-        print(f"❌ 잔고 조회 중 예외 발생: {e}")
-        return 0
-
 # ====== 주문 수량 계산 ======
-def calculate_order_qty(balance, price, leverage=3, risk_pct=0.09):
-    return round((balance * risk_pct * leverage) / price, 2)
+def calculate_fixed_qty(step_index, price):
+    fixed_qty = [0.6, 0.2, 0.1, 0.1]  # 수량 비율 고정
+    base_size = 5  # 기본 주문 수량 기준값
+    return round(base_size * fixed_qty[step_index], 3)
 
 # ====== 웹훅 처리 ======
 @app.route("/webhook", methods=["POST"])
@@ -127,16 +100,7 @@ def webhook():
     if not price:
         return jsonify({"error": "price fetch failed"}), 500
 
-    balance = get_balance()
-    if balance <= 0:
-        return jsonify({"error": "balance fetch failed"}), 500
-
-    qty_total = calculate_order_qty(balance, price)
-
-    ratios_entry = [0.6, 0.2, 0.1, 0.1]
-    ratios_exit = [0.22, 0.20, 0.28, 0.30]
-    ratio = ratios_entry[step_index] if action_type == "entry" else ratios_exit[step_index]
-    qty = round(qty_total * ratio, 3)
+    qty = calculate_fixed_qty(step_index, price)
 
     body = {
         "symbol": SYMBOL,
