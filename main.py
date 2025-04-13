@@ -14,9 +14,14 @@ API_SECRET = os.environ.get("BYBIT_SECRET")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
+# ✅ 환경변수 확인 로그 (여기 위치가 맞음)
+print("🔐 API_KEY:", API_KEY)
+print("🔐 API_SECRET:", API_SECRET)
+
 # ====== 환경변수 누락 검사 ======
 if not API_KEY or not API_SECRET:
     raise EnvironmentError("❌ API_KEY 또는 API_SECRET이 설정되지 않았습니다. Fly.io secrets를 확인해주세요.")
+
 
 BASE_URL = "https://api.bybit.com"
 SYMBOL = "SOLUSDT.P"
