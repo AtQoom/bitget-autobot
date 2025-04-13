@@ -49,6 +49,25 @@ def get_current_price(symbol):
         print(f"❌ 가격 조회 오류: {e}")
         return None
 
+# ====== 잔고 조회 함수 ======
+def get_balance():
+    try:
+        path = "/api/mix/v1/account/accounts?productType=umcbl"
+        url = BASE_URL + path
+        headers = get_auth_headers(API_KEY, API_SECRET, API_PASSPHRASE, "GET", path)
+        res = requests.get(url, headers=headers)
+        data = res.json()
+        print("💰 잔고 조회 결과:", data)
+
+        for item in data.get("data", []):
+            if item.get("marginCoin") == "USDT":
+                return float(item.get("available", 0))
+        return 0
+    except Exception as e:
+        print("❌ 잔고 조회 오류:")
+        traceback.print_exc()
+        return 0
+
 # ====== 주문 수량 계산 ======
 def calculate_fixed_qty(step_index, price):
     fixed_qty = [0.6, 0.2, 0.1, 0.1]  # 수량 비율 고정
@@ -107,6 +126,11 @@ def webhook():
         return jsonify({"error": "price fetch failed"}), 500
 
     qty = calculate_fixed_qty(step_index, price)
+
+    balance = get_balance()
+    if balance < price * qty:
+        print("❌ 잔고 부족으로 주문 불가")
+        return jsonify({"error": "insufficient balance"}), 400
 
     body = {
         "symbol": SYMBOL,
