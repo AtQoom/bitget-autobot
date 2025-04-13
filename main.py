@@ -23,9 +23,8 @@ SYMBOL = "SOLUSDT.P"
 LEVERAGE = 3
 SLIPPAGE = 0.0035  # 0.35%
 
-# ====== 중복 신호 방지 (order_id별 시간 저장) ======
-last_signal_times = {}
-signal_cooldown = 3  # 초
+# ====== 최근 실행된 order_id 캐시 (1분 단위 기준) ======
+executed_signals = set()
 
 # ====== 비율 기반 수량 ======
 weight_map = {
@@ -121,7 +120,7 @@ def calculate_qty(order_id, balance, price):
 # ====== 웹훅 처리 ======
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    global last_signal_times
+    global executed_signals
 
     try:
         data = request.get_json(force=True)
@@ -138,12 +137,13 @@ def webhook():
     if not order_action or not order_id:
         return jsonify({"error": "Invalid webhook data"}), 400
 
-    now = time.time()
-    last_time = last_signal_times.get(order_id, 0)
-    if now - last_time < signal_cooldown:
-        return jsonify({"status": f"{order_id} skipped (cooldown)"}), 200
+    # 신호 키를 1분 단위로 구분
+    minute_key = time.strftime("%Y%m%d%H%M", time.localtime())
+    signal_key = f"{order_id}_{minute_key}"
+    if signal_key in executed_signals:
+        return jsonify({"status": f"{order_id} skipped (duplicate signal in same minute)"}), 200
 
-    last_signal_times[order_id] = now
+    executed_signals.add(signal_key)
 
     side = "buy" if order_action == "buy" else "sell"
     balance = get_wallet_balance()
@@ -160,9 +160,7 @@ def webhook():
     try:
         response = place_market_order(side, SYMBOL, qty)
         print(f"✅ 주문 응답: {response.status_code} - {response.text}")
-        send_telegram(f"✅ 주문 완료: {side.upper()} {qty} {SYMBOL}
-📊 비중: {weight_map.get(order_id, 0)*100:.0f}% | 현재가: {price:.3f} USDT
-💰 사용 금액: {qty * price:.2f} USDT | ⏰ 시간: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(now))}")
+        send_telegram(f"✅ 주문 완료: {side.upper()} {qty} {SYMBOL}\n📊 비중: {weight_map.get(order_id, 0)*100:.0f}% | 현재가: {price:.3f} USDT\n💰 사용 금액: {qty * price:.2f} USDT | ⏰ 시간: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
         return jsonify(response.json())
     except Exception as e:
         print("❌ 주문 실패:", e)
