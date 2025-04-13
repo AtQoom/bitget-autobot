@@ -11,6 +11,8 @@ app = Flask(__name__)
 # ====== 환경변수 (Fly.io secrets에서 설정됨) ======
 API_KEY = os.environ.get("BYBIT_API_KEY")
 API_SECRET = os.environ.get("BYBIT_SECRET")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
 # ====== 환경변수 누락 검사 ======
 if not API_KEY or not API_SECRET:
@@ -37,6 +39,16 @@ weight_map = {
     "Short 4": 0.10
 }
 
+# ====== 텔레그램 알림 함수 ======
+def send_telegram(message):
+    if TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
+        try:
+            requests.post(url, data=payload, timeout=5)
+        except:
+            print("⚠️ 텔레그램 전송 실패")
+
 # ====== 잔고 기반 계산 (잔고 조회) ======
 def get_wallet_balance():
     try:
@@ -60,6 +72,7 @@ def get_wallet_balance():
         return usdt_balance
     except Exception as e:
         print("❌ 잔고 조회 실패:", e)
+        send_telegram(f"❌ 잔고 조회 실패: {e}")
         return 0
 
 # ====== 현재가 조회 ======
@@ -70,6 +83,7 @@ def get_current_price():
         return float(data["result"]["list"][0]["lastPrice"])
     except Exception as e:
         print("❌ 현재가 조회 실패:", e)
+        send_telegram(f"❌ 현재가 조회 실패: {e}")
         return None
 
 # ====== 서명 생성 ======
@@ -146,9 +160,13 @@ def webhook():
     try:
         response = place_market_order(side, SYMBOL, qty)
         print(f"✅ 주문 응답: {response.status_code} - {response.text}")
+        send_telegram(f"✅ 주문 완료: {side.upper()} {qty} {SYMBOL}
+📊 비중: {weight_map.get(order_id, 0)*100:.0f}% | 현재가: {price:.3f} USDT
+💰 사용 금액: {qty * price:.2f} USDT | ⏰ 시간: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(now))}")
         return jsonify(response.json())
     except Exception as e:
         print("❌ 주문 실패:", e)
+        send_telegram(f"❌ 주문 실패: {e}")
         return jsonify({"error": "Order request failed"}), 500
 
 @app.route("/")
