@@ -11,6 +11,11 @@ app = Flask(__name__)
 # ====== 환경변수 (Fly.io secrets에서 설정됨) ======
 API_KEY = os.environ.get("BYBIT_API_KEY")
 API_SECRET = os.environ.get("BYBIT_SECRET")
+
+# ====== 환경변수 누락 검사 ======
+if not API_KEY or not API_SECRET:
+    raise EnvironmentError("❌ API_KEY 또는 API_SECRET이 설정되지 않았습니다. Fly.io secrets를 확인해주세요.")
+
 BASE_URL = "https://api.bybit.com"
 SYMBOL = "SOLUSDT.P"
 LEVERAGE = 3
