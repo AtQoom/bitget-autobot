@@ -1,4 +1,4 @@
-app = "bybit-autobot"  # ← 이 줄이 반드시 있어야 해. 앱 이름은 Fly.io 대시보드에 있는 이름 그대로!
+app = "bitget-autobot"  # ← 이 줄이 반드시 있어야 해. 앱 이름은 Fly.io 대시보드에 있는 이름 그대로!
 
 [build]
   dockerfile = "Dockerfile"
