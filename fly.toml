@@ -1,4 +1,4 @@
-app = "bitget-autobot"  # 반드시 Fly.io 대시보드 앱 이름과 일치해야 함
+app = "bitget-autobot"
 
 [build]
   dockerfile = "Dockerfile"
