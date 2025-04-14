@@ -5,6 +5,7 @@ app = "bitget-autobot"  # ← 반드시 앱 이름과 일치해야 함
 
 [env]
   PORT = "8080"
+  PYTHONUNBUFFERED = "1"  # 👈 이 줄 추가!
 
 [[services]]
   internal_port = 8080
