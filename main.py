@@ -99,7 +99,6 @@ def place_order(direction, step):
         print("❌ 주문 중 예외 발생:", e)
         send_telegram_message(f"[에러] 주문 실패: {str(e)}")
 
-
 # ✅ 청산
 def close_position(direction, reason):
     side = closeSide.get(direction)
@@ -135,12 +134,11 @@ def close_position(direction, reason):
 # ✅ 웹훅 처리
 @app.route("/", methods=["POST"])
 def webhook():
-    print("🚨 웹훅 함수 진입")  # 함수 진입만 해도 찍히게
+    print("🚨 웹훅 함수 진입")
 
     try:
         data = request.get_json(force=True)
         print("🚀 웹훅 신호 수신됨 (RAW):", data)
-
 
         signal = data.get("signal", "")
         print("🧩 받은 signal:", signal)
@@ -174,9 +172,6 @@ def webhook():
         send_telegram_message(f"[서버 오류] {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
-
 # ✅ 실행
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080, debug=True)
-
-
