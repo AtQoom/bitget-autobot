@@ -1,0 +1,11 @@
+app = "bitget-autobot"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  PYTHONUNBUFFERED = "1"
+
+[processes]
+  app = "python -u main.py"
