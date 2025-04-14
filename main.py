@@ -56,43 +56,49 @@ def sign_request(timestamp, method, request_path, body=""):
 
 # ✅ 주문
 def place_order(direction, step):
-    print(f"📥 주문 진입 요청: direction={direction}, step={step}")
-    print(f"📦 환경변수 상태: API_KEY={'OK' if API_KEY else '❌'}, API_SECRET={'OK' if API_SECRET else '❌'}, PASSPHRASE={'OK' if API_PASSPHRASE else '❌'}")
+    try:
+        print(f"📥 주문 진입 요청: direction={direction}, step={step}")
+        print(f"📦 환경변수 상태: API_KEY={'OK' if API_KEY else '❌'}, API_SECRET={'OK' if API_SECRET else '❌'}, PASSPHRASE={'OK' if API_PASSPHRASE else '❌'}")
 
-    size = step_risk.get(step)
-    side = tradeSide.get(direction)
-    if size is None or side is None:
-        print("[에러] 유효하지 않은 진입 정보:", direction, step)
-        return
+        size = step_risk.get(step)
+        side = tradeSide.get(direction)
+        if size is None or side is None:
+            print("[에러] 유효하지 않은 진입 정보:", direction, step)
+            return
 
-    timestamp = get_server_time()
-    body = {
-        "symbol": symbol,
-        "marginCoin": "USDT",
-        "side": side,
-        "orderType": "market",
-        "size": 1,
-        "timeInForceValue": "normal"
-    }
-    body_json = json.dumps(body)
-    path = "/api/v1/mix/order/placeOrder"
-    sign = sign_request(timestamp, "POST", path, body_json)
+        timestamp = get_server_time()
+        body = {
+            "symbol": symbol,
+            "marginCoin": "USDT",
+            "side": side,
+            "orderType": "market",
+            "size": 1,
+            "timeInForceValue": "normal"
+        }
+        body_json = json.dumps(body)
+        path = "/api/v1/mix/order/placeOrder"
+        sign = sign_request(timestamp, "POST", path, body_json)
 
-    headers = {
-        "ACCESS-KEY": API_KEY,
-        "ACCESS-SIGN": sign,
-        "ACCESS-TIMESTAMP": timestamp,
-        "ACCESS-PASSPHRASE": API_PASSPHRASE,
-        "Content-Type": "application/json"
-    }
+        headers = {
+            "ACCESS-KEY": API_KEY,
+            "ACCESS-SIGN": sign,
+            "ACCESS-TIMESTAMP": timestamp,
+            "ACCESS-PASSPHRASE": API_PASSPHRASE,
+            "Content-Type": "application/json"
+        }
 
-    url = BASE_URL + path
-    res = requests.post(url, headers=headers, data=body_json)
+        url = BASE_URL + path
+        res = requests.post(url, headers=headers, data=body_json)
 
-    print(f"[Bitget 응답] 상태코드: {res.status_code}")
-    print(f"[Bitget 응답 본문] {res.text}")
+        print(f"[Bitget 응답] 상태코드: {res.status_code}")
+        print(f"[Bitget 응답 본문] {res.text}")
 
-    send_telegram_message(f"[진입] {direction} {step}단계 주문 응답: {res.text}")
+        send_telegram_message(f"[진입] {direction} {step}단계 주문 응답: {res.text}")
+
+    except Exception as e:
+        print("❌ 주문 중 예외 발생:", e)
+        send_telegram_message(f"[에러] 주문 실패: {str(e)}")
+
 
 
     # ✅ 여기 추가!
