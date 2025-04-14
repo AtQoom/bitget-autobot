@@ -6,3 +6,6 @@ app = "bitget-autobot"
 [env]
   PORT = "8080"
   PYTHONUNBUFFERED = "1"
+
+[processes]
+  app = "python -u main.py"
