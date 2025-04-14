@@ -85,7 +85,14 @@ def place_order(direction, step):
 
     url = BASE_URL + path
     res = requests.post(url, headers=headers, data=body_json)
+
+    # ✅ 여기 추가!
+    print(f"[Bitget 응답] 상태코드: {res.status_code}")
+    print(f"[Bitget 응답 본문] {res.text}")
+
+    # 알림 (나중에 수정해도 됨)
     send_telegram_message(f"[진입] {direction} {step}단계 주문 응답: {res.text}")
+
 
 # ✅ 청산
 def close_position(direction, reason):
