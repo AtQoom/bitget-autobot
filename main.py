@@ -131,10 +131,13 @@ def close_position(direction, reason):
 def webhook():
     try:
         data = request.get_json(force=True)
-        print("🚀 웹훅 신호 수신됨:", data)
+        print("🚀 웹훅 신호 수신됨 (RAW):", data)
 
-        signal = data.get("signal", "").strip()
-        parts = signal.split()
+        signal = data.get("signal", "")
+        print("🧩 받은 signal:", signal)
+
+        parts = signal.strip().split()
+        print("🧩 분해된 parts:", parts)
 
         if len(parts) < 3:
             print("❌ 잘못된 신호 형식:", signal)
@@ -144,9 +147,11 @@ def webhook():
 
         if action == "ENTRY" and sub == "STEP" and len(parts) == 4:
             step = parts[3]
+            print("✅ 주문 실행:", direction, step)
             place_order(direction, step)
 
         elif action == "EXIT" and sub in ["TP1", "TP2", "SL_SLOW", "SL_HARD"]:
+            print("✅ 청산 실행:", direction, sub)
             close_position(direction, sub)
 
         else:
@@ -159,6 +164,7 @@ def webhook():
         print("❌ 예외 발생:", e)
         send_telegram_message(f"[서버 오류] {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
+
 
 # ✅ 실행
 if __name__ == "__main__":
