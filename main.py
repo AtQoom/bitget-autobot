@@ -65,12 +65,6 @@ def place_order(direction, step):
         print("[에러] 유효하지 않은 진입 정보:", direction, step)
         return
 
-    ...
-    res = requests.post(url, headers=headers, data=body_json)
-    print(f"[Bitget 응답] 상태코드: {res.status_code}")
-    print(f"[Bitget 응답 본문] {res.text}")
-
-
     timestamp = get_server_time()
     body = {
         "symbol": symbol,
@@ -94,6 +88,12 @@ def place_order(direction, step):
 
     url = BASE_URL + path
     res = requests.post(url, headers=headers, data=body_json)
+
+    print(f"[Bitget 응답] 상태코드: {res.status_code}")
+    print(f"[Bitget 응답 본문] {res.text}")
+
+    send_telegram_message(f"[진입] {direction} {step}단계 주문 응답: {res.text}")
+
 
     # ✅ 여기 추가!
     print(f"[Bitget 응답] 상태코드: {res.status_code}")
