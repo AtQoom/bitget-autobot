@@ -1,3 +1,5 @@
+app = "bitget-autobot"  # 반드시 Fly.io 대시보드 앱 이름과 일치해야 함
+
 [build]
   dockerfile = "Dockerfile"
 
@@ -6,4 +8,4 @@
   PYTHONUNBUFFERED = "1"
 
 [processes]
-  app = "python -u main.py"  # 👈 이걸로 확실히 Flask 개발 서버 실행
+  app = "python -u main.py"
