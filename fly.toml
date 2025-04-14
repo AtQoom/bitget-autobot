@@ -1,23 +1,9 @@
-app = "bitget-autobot"  # ← 반드시 앱 이름과 일치해야 함
-
 [build]
   dockerfile = "Dockerfile"
 
 [env]
   PORT = "8080"
-  PYTHONUNBUFFERED = "1"  # 👈 이 줄 추가!
-
-[[services]]
-  internal_port = 8080
-  protocol = "tcp"
-
-  [[services.ports]]
-    handlers = ["http"]
-    port = 80
-
-  [[services.ports]]
-    handlers = ["tls", "http"]
-    port = 443
+  PYTHONUNBUFFERED = "1"
 
 [processes]
-  app = "python main.py"
+  app = "python -u main.py"  # 👈 이걸로 확실히 Flask 개발 서버 실행
