@@ -56,6 +56,9 @@ def sign_request(timestamp, method, request_path, body=""):
 
 # ✅ 주문
 def place_order(direction, step):
+    print(f"📥 주문 진입 요청: direction={direction}, step={step}")
+    print(f"📦 환경변수: API_KEY={API_KEY}, API_SECRET={'OK' if API_SECRET else 'None'}, PASSPHRASE={'OK' if API_PASSPHRASE else 'None'}")
+
     size = step_risk.get(step)
     side = tradeSide.get(direction)
     if size is None or side is None:
