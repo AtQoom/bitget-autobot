@@ -135,9 +135,12 @@ def close_position(direction, reason):
 # ✅ 웹훅 처리
 @app.route("/", methods=["POST"])
 def webhook():
+    print("🚨 웹훅 함수 진입")  # 함수 진입만 해도 찍히게
+
     try:
         data = request.get_json(force=True)
         print("🚀 웹훅 신호 수신됨 (RAW):", data)
+
 
         signal = data.get("signal", "")
         print("🧩 받은 signal:", signal)
