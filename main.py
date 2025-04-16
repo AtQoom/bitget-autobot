@@ -130,15 +130,17 @@ def place_entry_order(signal, equity, strength=1.0):
     return send_order(direction, size)
 
 # === 청산 주문 ===
-def place_exit_order(signal):
+def place_exit_order(signal, strength=1.0):
     direction = "sell" if "LONG" in signal else "buy"
     position_size = get_position_size()
     if position_size <= 0:
         print(f"⛔ 현재 포지션 없음. 청산 스킵: {signal}")
         return {"skipped": True}
+    
     size = position_size
     if "TP1" in signal:
-        size = floor(position_size * 0.5 * 10) / 10
+        ratio = min(max(0.3 + (strength - 1.0) * 0.3, 0.3), 0.6)
+        size = floor(position_size * ratio * 10) / 10
     return send_order(direction, size)
 
 @app.route('/', methods=['POST'])
@@ -162,7 +164,7 @@ def webhook():
                 return "Balance error", 500
             result = place_entry_order(signal, equity, strength)
         elif exit_pattern.match(signal):
-            result = place_exit_order(signal)
+            result = place_exit_order(signal, strength)
         else:
             return "Unknown signal", 400
 
