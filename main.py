@@ -1,171 +1,158 @@
-from flask import Flask, request, jsonify
 import os
-import requests
+import time
 import hmac
 import hashlib
-import time
+import base64
 import json
+import requests
+from flask import Flask, request, jsonify
+from math import floor
+import re
 
 app = Flask(__name__)
 
-# 환경변수
-API_KEY = os.getenv("BITGET_API_KEY")
-API_SECRET = os.getenv("BITGET_API_SECRET")
-API_PASSPHRASE = os.getenv("BITGET_API_PASSPHRASE")
+API_KEY = os.environ.get("API_KEY")
+API_SECRET = os.environ.get("API_SECRET")
+API_PASSPHRASE = os.environ.get("API_PASSPHRASE")
 
 BASE_URL = "https://api.bitget.com"
-symbol = "SOLUSDTUMCBL"
-marginMode = "isolated"
 
-tradeSide = {
-    "LONG": "open_long",
-    "SHORT": "open_short"
-}
-closeSide = {
-    "LONG": "close_long",
-    "SHORT": "close_short"
-}
+def sign_message(timestamp, method, request_path, body=""):
+    message = f"{timestamp}{method}{request_path}{body}"
+    mac = hmac.new(API_SECRET.encode("utf-8"), message.encode("utf-8"), hashlib.sha256)
+    return base64.b64encode(mac.digest()).decode("utf-8")
 
-step_risk = {
-    "1": 0.05,
-    "2": 0.10,
-    "3": 0.20,
-    "4": 0.25
-}
-
-# 현재 환경변수 확인하기
-print("✅ 환경변수 상태")
-print("API_KEY:", API_KEY)
-print("API_SECRET:", API_SECRET)
-print("API_PASSPHRASE:", API_PASSPHRASE)
-
-# 시간 처리기
-
-def get_server_time():
-    return str(int(time.time() * 1000))
-
-# 서명 생성하기
-
-def sign_request(timestamp, method, request_path, body=""):
-    message = timestamp + method + request_path + body
-    return hmac.new(API_SECRET.encode(), message.encode(), hashlib.sha256).hexdigest()
-
-# 주문 실행하기
-
-def place_order(direction, step):
+def get_equity():
     try:
-        print(f"📥 주문 진입 요청: direction={direction}, step={step}")
-
-        size = step_risk.get(step)
-        side = tradeSide.get(direction)
-        if size is None or side is None:
-            print("[에러] 유효하지 않은 진입 정보:", direction, step)
-            return
-
-        timestamp = get_server_time()
-        body = {
-            "symbol": symbol,
-            "marginCoin": "USDT",
-            "side": side,
-            "orderType": "market",
-            "size": 1,
-            "timeInForceValue": "normal"
-        }
-        body_json = json.dumps(body)
-        path = "/api/v1/mix/order/placeOrder"
-        sign = sign_request(timestamp, "POST", path, body_json)
+        method = "GET"
+        query = "symbol=SOLUSDT&productType=USDT-FUTURES&marginCoin=USDT"
+        path = f"/api/v2/mix/account/account?{query}"
+        url = BASE_URL + path
+        timestamp = str(int(time.time() * 1000))
+        sign = sign_message(timestamp, method, path)
 
         headers = {
             "ACCESS-KEY": API_KEY,
             "ACCESS-SIGN": sign,
             "ACCESS-TIMESTAMP": timestamp,
-            "ACCESS-PASSPHRASE": API_PASSPHRASE,
-            "Content-Type": "application/json"
+            "ACCESS-PASSPHRASE": API_PASSPHRASE
         }
 
-        url = BASE_URL + path
-        res = requests.post(url, headers=headers, data=body_json)
-
-        print(f"[Bitget 응답] 상태코드: {res.status_code}")
-        print(f"[Bitget 응답 본문] {res.text}")
-
+        res = requests.get(url, headers=headers)
+        print("📥 잔고 API 응답:", res.status_code, res.text)
+        data = res.json()
+        if data.get("code") == "00000" and data.get("data") and data["data"].get("accountEquity") is not None:
+            return float(data["data"]["accountEquity"])
+        else:
+            print("❌ [잔고 응답 오류] code != 00000 또는 data 없음")
+            return None
     except Exception as e:
-        print("❌ 주문 중 예외 발생:", e)
+        print("잔고 조회 오류:", e)
+        return None
 
+def get_market_price():
+    try:
+        url = BASE_URL + "/api/v2/mix/market/ticker?symbol=SOLUSDT&productType=USDT-FUTURES"
+        res = requests.get(url)
+        data = res.json()
+        if data.get("code") == "00000" and data.get("data") and isinstance(data["data"], list):
+            return float(data["data"][0]["lastPr"])
+        else:
+            print("❌ [시세 조회 실패]:", data)
+            return 1.0
+    except Exception as e:
+        print("시세 조회 오류:", e)
+        return 1.0
 
-# 청산 실행하기
-
-def close_position(direction, reason):
-    side = closeSide.get(direction)
-    if side is None:
-        print("[에러] 유효하지 않은 청산 방향:", direction)
-        return
-
-    timestamp = get_server_time()
-    body = {
-        "symbol": symbol,
+def send_order(side, size):
+    timestamp = str(int(time.time() * 1000))
+    method = "POST"
+    path = "/api/v2/mix/order/place-order"
+    body_data = {
+        "symbol": "SOLUSDT",
         "marginCoin": "USDT",
         "side": side,
         "orderType": "market",
-        "size": 0,
-        "timeInForceValue": "normal"
+        "size": str(size),
+        "price": "",
+        "marginMode": "isolated",
+        "productType": "USDT-FUTURES"
     }
-    body_json = json.dumps(body)
-    path = "/api/v1/mix/order/closePosition"
-    sign = sign_request(timestamp, "POST", path, body_json)
+
+    body = json.dumps(body_data, separators=(',', ':'))
+    signature = sign_message(timestamp, method, path, body)
 
     headers = {
         "ACCESS-KEY": API_KEY,
-        "ACCESS-SIGN": sign,
+        "ACCESS-SIGN": signature,
         "ACCESS-TIMESTAMP": timestamp,
         "ACCESS-PASSPHRASE": API_PASSPHRASE,
         "Content-Type": "application/json"
     }
 
     url = BASE_URL + path
-    res = requests.post(url, headers=headers, data=body_json)
-    print(f"[청산 응답] {direction} {reason}: {res.text}")
+    response = requests.post(url, headers=headers, data=body)
+    print(f"📬 주문 응답 ({side} {size}):", response.status_code, response.text)
+    return response.json()
 
-# 웹하크 처리
+def place_entry_order(signal, equity, strength=1.0):
+    direction = "buy" if "LONG" in signal else "sell"
+    leverage = 4
+    price = get_market_price()
 
-@app.route("/", methods=["POST"])
+    base_risk = 0.24  # 안전 범위 유지
+    raw_size = (equity * base_risk * leverage * strength) / price
+    size = floor(raw_size * 10) / 10
+
+    if size < 0.1 or size * price < 5:
+        print(f"❌ 주문 수량({size}) 또는 금액이 최소 기준에 미달")
+        return {"error": "Below minimum size or value"}
+
+    return send_order(direction, size)
+
+def place_exit_order(signal):
+    direction = "sell" if "LONG" in signal else "buy"
+    price = get_market_price()
+    size = 1.5
+    if "TP1" in signal:
+        size *= 0.5
+    return send_order(direction, size)
+
+@app.route('/', methods=['POST'])
 def webhook():
-    print("🚨 웹하크 함수 진입")
+    print("🟡 [웹훅] 요청 도착 - Content-Type:", request.content_type)
     try:
         data = request.get_json(force=True)
-        print("🚀 웹하크 시간 수신 (RAW):", data)
+        print("📦 웹훅 수신:", data)
 
-        signal = data.get("signal", "")
-        print("🧩 받은 signal:", signal)
+        signal = data.get("signal")
+        strength = float(data.get("strength", 1.0))
 
-        parts = signal.strip().split()
-        print("🧩 분해된 parts:", parts)
+        if not signal:
+            return "Missing signal", 400
 
-        if len(parts) < 3:
-            print("❌ 잘못된 시험 형식:", signal)
-            return jsonify({"error": "Invalid signal format"}), 400
+        entry_pattern = re.compile(r"ENTRY (LONG|SHORT) STEP 1")
+        exit_pattern = re.compile(r"EXIT (LONG|SHORT) (TP1|TP2|SL_SLOW|SL_HARD)")
 
-        action, direction, sub = parts[0], parts[1], parts[2]
-
-        if action == "ENTRY" and sub == "STEP" and len(parts) == 4:
-            step = parts[3]
-            print("✅ 주문 실행:", direction, step)
-            place_order(direction, step)
-
-        elif action == "EXIT" and sub in ["TP1", "TP2", "SL_SLOW", "SL_HARD"]:
-            print("✅ 청산 실행:", direction, sub)
-            close_position(direction, sub)
-
+        if entry_pattern.match(signal):
+            equity = get_equity()
+            if equity is None:
+                return "Balance error", 500
+            result = place_entry_order(signal, equity, strength)
+        elif exit_pattern.match(signal):
+            result = place_exit_order(signal)
         else:
-            print("❌ 처리되지 않은 시간:", signal)
-            return jsonify({"error": "Unhandled signal"}), 400
+            return "Unknown signal", 400
 
-        return jsonify({"success": True})
+        return jsonify({"status": "order_sent", "result": result})
 
     except Exception as e:
-        print("❌ 예외 발생:", e)
-        return jsonify({"success": False, "error": str(e)}), 500
+        print("❌ 웹훅 처리 오류:", str(e))
+        return "Internal error", 500
 
-# 실행문
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080, debug=True)
+@app.route('/ping', methods=['GET'])
+def ping():
+    return "pong", 200
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)
