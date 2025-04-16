@@ -136,11 +136,18 @@ def place_exit_order(signal, strength=1.0):
     if position_size <= 0:
         print(f"⛔ 현재 포지션 없음. 청산 스킵: {signal}")
         return {"skipped": True}
-    
+
+    tp1_ratio = min(max(0.3 + (strength - 1.0) * 0.3, 0.3), 0.6)
+    tp2_ratio = 1.0 - tp1_ratio
+
     size = position_size
     if "TP1" in signal:
-        ratio = min(max(0.3 + (strength - 1.0) * 0.3, 0.3), 0.6)
-        size = floor(position_size * ratio * 10) / 10
+        size = floor(position_size * tp1_ratio * 10) / 10
+    elif "TP2" in signal:
+        size = floor(position_size * tp2_ratio * 10) / 10
+    elif "SL_SLOW" in signal:
+        size = floor(position_size * 0.5 * 10) / 10
+
     return send_order(direction, size)
 
 @app.route('/', methods=['POST'])
