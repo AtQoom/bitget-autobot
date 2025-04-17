@@ -134,7 +134,6 @@ def place_exit_order(signal, strength):
         size = floor(position_size * 0.5 * 10) / 10
     return send_order(direction, size)
 
-# ✅ 남은 포지션 강제 청산
 def finalize_remaining(signal):
     direction = "sell" if "LONG" in signal else "buy"
     size = get_position_size()
@@ -146,14 +145,19 @@ def finalize_remaining(signal):
 @app.route('/', methods=['POST'])
 def webhook():
     try:
-        if request.content_type != 'application/json':
-            return "Unsupported Media Type", 415
-        data = request.get_json(force=True)
+        try:
+            data = request.get_json(force=True)
+        except Exception as e:
+            print("❌ JSON 파싱 오류:", str(e))
+            return "Invalid JSON", 400
+
         print("📦 웹훅 수신:", data)
         signal = data.get("signal")
         strength = float(data.get("strength", 1.0))
+
         if not signal:
             return "Missing signal", 400
+
         if "ENTRY" in signal:
             equity = get_equity()
             if equity is None:
@@ -161,9 +165,10 @@ def webhook():
             result = place_entry_order(signal, equity, strength)
         elif "EXIT" in signal:
             result = place_exit_order(signal, strength)
-            finalize_remaining(signal)  # ✅ 종료 후 잔량 처리
+            finalize_remaining(signal)
         else:
             return "Unknown signal", 400
+
         return jsonify({"status": "order_sent", "result": result})
     except Exception as e:
         print("❌ 웹훅 처리 오류:", str(e))
