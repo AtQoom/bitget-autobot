@@ -73,7 +73,7 @@ def get_position_size():
         print("포지션 조회 오류:", e)
         return 0
 
-# === 실시간 시세 조회 ===
+# === 시세 조회 ===
 def get_market_price():
     try:
         url = BASE_URL + "/api/v2/mix/market/ticker?symbol=SOLUSDT&productType=USDT-FUTURES"
@@ -115,22 +115,22 @@ def send_order(side, size):
     return res.json()
 
 # === 진입 주문 ===
-def place_entry_order(signal, equity, strength=1.0):
+def place_entry_order(signal, equity, strength):
     direction = "buy" if "LONG" in signal else "sell"
     leverage = 4
     price = get_market_price()
     base_risk = 0.24
     raw_size = (equity * base_risk * leverage * strength) / price
-    max_position_size = (equity * 0.9) / price
-    raw_size = min(raw_size, max_position_size)
-    size = floor(raw_size * 10) / 10
+    max_size = (equity * 0.9) / price
+    size = min(raw_size, max_size)
+    size = floor(size * 10) / 10
     if size < 0.1 or size * price < 5:
         print(f"❌ 주문 수량({size}) 또는 금액이 최소 기준에 미달")
         return {"error": "Below minimum size or value"}
     return send_order(direction, size)
 
 # === 청산 주문 ===
-def place_exit_order(signal, strength=1.0):
+def place_exit_order(signal, strength):
     direction = "sell" if "LONG" in signal else "buy"
     position_size = get_position_size()
     if position_size <= 0:
@@ -139,8 +139,8 @@ def place_exit_order(signal, strength=1.0):
 
     tp1_ratio = min(max(0.3 + (strength - 1.0) * 0.3, 0.3), 0.6)
     tp2_ratio = 1.0 - tp1_ratio
-
     size = position_size
+
     if "TP1" in signal:
         size = floor(position_size * tp1_ratio * 10) / 10
     elif "TP2" in signal:
@@ -150,37 +150,33 @@ def place_exit_order(signal, strength=1.0):
 
     return send_order(direction, size)
 
-# === 웹훅 수신 ===
+# === 웹훅 처리 ===
 @app.route('/', methods=['POST'])
 def webhook():
     try:
-        content_type = request.headers.get("Content-Type", "")
-        raw_body = request.data.decode()
-        print(f"📥 Content-Type: {content_type}")
-        print(f"📥 Raw Body: {raw_body}")
+        if request.content_type != 'application/json':
+            return "Unsupported Media Type", 415
 
         data = request.get_json(force=True)
         print("📦 웹훅 수신:", data)
-
         signal = data.get("signal")
         strength = float(data.get("strength", 1.0))
+
         if not signal:
             return "Missing signal", 400
 
-        entry_pattern = re.compile(r"ENTRY (LONG|SHORT) STEP 1")
-        exit_pattern = re.compile(r"EXIT (LONG|SHORT) (TP1|TP2|SL_SLOW|SL_HARD)")
-
-        if entry_pattern.match(signal):
+        if "ENTRY" in signal:
             equity = get_equity()
             if equity is None:
                 return "Balance error", 500
             result = place_entry_order(signal, equity, strength)
-        elif exit_pattern.match(signal):
+        elif "EXIT" in signal:
             result = place_exit_order(signal, strength)
         else:
             return "Unknown signal", 400
 
         return jsonify({"status": "order_sent", "result": result})
+
     except Exception as e:
         print("❌ 웹훅 처리 오류:", str(e))
         return "Internal error", 500
