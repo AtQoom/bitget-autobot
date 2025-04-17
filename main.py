@@ -111,7 +111,7 @@ def send_order(side, size):
     }
     url = BASE_URL + path
     res = requests.post(url, headers=headers, data=body)
-    print(f"\U0001f4ec 주문 응답 ({side} {size}):", res.status_code, res.text)
+    print(f"📬 주문 응답 ({side} {size}):", res.status_code, res.text)
     return res.json()
 
 # === 진입 주문 ===
@@ -121,18 +121,20 @@ def place_entry_order(signal, equity, strength):
     price = get_market_price()
     base_risk = 0.24
 
+    # STEP 추출
     match = re.search(r"STEP (\d+)", signal)
     step = int(match.group(1)) if match else 1
 
+    # 분할 수 계산
     steps = 1 if strength >= 2.0 else 3 if strength >= 1.6 else 5
     portion = 1 / steps
 
     raw_size = (equity * base_risk * leverage * strength * portion) / price
     max_size = (equity * 0.9 * portion) / price
     size = min(raw_size, max_size)
-    size = round(size * 10) / 10
+    size = floor(size * 10) / 10
 
-    print(f"\U0001f9ee 계산 로그 | equity={equity}, price={price}, strength={strength}, portion={portion}, size(before round)={raw_size}, final size={size}")
+    print(f"🧮 계산 로그 | equity={equity}, price={price}, strength={strength}, portion={portion}, size(before round)={raw_size}, final size={size}")
 
     if size < 0.1 or size * price < 5:
         print(f"❌ STEP {step} 주문 수량({size}) 또는 금액이 최소 기준에 미달")
@@ -165,11 +167,10 @@ def place_exit_order(signal, strength):
 @app.route('/', methods=['POST'])
 def webhook():
     try:
-        if request.content_type != 'application/json':
-            return "Unsupported Media Type", 415
-
+        # Content-Type 체크 제거하고 강제로 JSON 파싱
         data = request.get_json(force=True)
-        print("\U0001f4e6 웹훅 수신:", data)
+        print("📦 웹훅 수신:", data)
+
         signal = data.get("signal")
         strength = float(data.get("strength", 1.0))
 
