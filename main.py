@@ -150,13 +150,18 @@ def place_exit_order(signal, strength=1.0):
 
     return send_order(direction, size)
 
+# === 웹훅 수신 ===
 @app.route('/', methods=['POST'])
 def webhook():
     try:
-        if request.content_type != 'application/json':
-            return "Unsupported Media Type", 415
-        data = request.get_json()
+        content_type = request.headers.get("Content-Type", "")
+        raw_body = request.data.decode()
+        print(f"📥 Content-Type: {content_type}")
+        print(f"📥 Raw Body: {raw_body}")
+
+        data = request.get_json(force=True)
         print("📦 웹훅 수신:", data)
+
         signal = data.get("signal")
         strength = float(data.get("strength", 1.0))
         if not signal:
