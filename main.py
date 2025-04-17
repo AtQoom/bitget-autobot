@@ -120,13 +120,23 @@ def place_entry_order(signal, equity, strength):
     leverage = 4
     price = get_market_price()
     base_risk = 0.24
-    raw_size = (equity * base_risk * leverage * strength) / price
-    max_size = (equity * 0.9) / price
+
+    # STEP 번호 추출
+    match = re.search(r"STEP (\d+)", signal)
+    step = int(match.group(1)) if match else 1
+
+    steps = 1 if strength >= 2.0 else 3 if strength >= 1.6 else 5
+    portion = 1 / steps
+
+    raw_size = (equity * base_risk * leverage * strength * portion) / price
+    max_size = (equity * 0.9 * portion) / price
     size = min(raw_size, max_size)
     size = floor(size * 10) / 10
+
     if size < 0.1 or size * price < 5:
-        print(f"❌ 주문 수량({size}) 또는 금액이 최소 기준에 미달")
+        print(f"❌ STEP {step} 주문 수량({size}) 또는 금액이 최소 기준에 미달")
         return {"error": "Below minimum size or value"}
+
     return send_order(direction, size)
 
 # === 청산 주문 ===
