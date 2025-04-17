@@ -111,7 +111,7 @@ def send_order(side, size):
     }
     url = BASE_URL + path
     res = requests.post(url, headers=headers, data=body)
-    print(f"📬 주문 응답 ({side} {size}):", res.status_code, res.text)
+    print(f"\U0001f4ec 주문 응답 ({side} {size}):", res.status_code, res.text)
     return res.json()
 
 # === 진입 주문 ===
@@ -121,7 +121,6 @@ def place_entry_order(signal, equity, strength):
     price = get_market_price()
     base_risk = 0.24
 
-    # STEP 번호 추출
     match = re.search(r"STEP (\d+)", signal)
     step = int(match.group(1)) if match else 1
 
@@ -131,7 +130,9 @@ def place_entry_order(signal, equity, strength):
     raw_size = (equity * base_risk * leverage * strength * portion) / price
     max_size = (equity * 0.9 * portion) / price
     size = min(raw_size, max_size)
-    size = floor(size * 10) / 10
+    size = round(size * 10) / 10
+
+    print(f"\U0001f9ee 계산 로그 | equity={equity}, price={price}, strength={strength}, portion={portion}, size(before round)={raw_size}, final size={size}")
 
     if size < 0.1 or size * price < 5:
         print(f"❌ STEP {step} 주문 수량({size}) 또는 금액이 최소 기준에 미달")
@@ -168,7 +169,7 @@ def webhook():
             return "Unsupported Media Type", 415
 
         data = request.get_json(force=True)
-        print("📦 웹훅 수신:", data)
+        print("\U0001f4e6 웹훅 수신:", data)
         signal = data.get("signal")
         strength = float(data.get("strength", 1.0))
 
