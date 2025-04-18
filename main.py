@@ -1,4 +1,5 @@
-import os, time, hmac, hashlib, base64, json, requests, re
+import os, time, hmac, hashlib, base64, json, re
+import requests
 from flask import Flask, request, jsonify
 from math import floor
 
@@ -9,160 +10,145 @@ API_SECRET = os.environ.get("API_SECRET")
 API_PASSPHRASE = os.environ.get("API_PASSPHRASE")
 BASE_URL = "https://api.bitget.com"
 
-# === 전역 포지션 정보 저장
-position_info = {
-    "side": None,
-    "entry_price": None,
-    "strength": None
-}
-
 def sign_message(timestamp, method, request_path, body=""):
-    message = f"{timestamp}{method}{request_path}{body}"
-    mac = hmac.new(API_SECRET.encode(), message.encode(), hashlib.sha256)
+    msg = f"{timestamp}{method}{request_path}{body}"
+    mac = hmac.new(API_SECRET.encode(), msg.encode(), hashlib.sha256)
     return base64.b64encode(mac.digest()).decode()
 
 def get_equity():
+    path = "/api/v2/mix/account/account?symbol=SOLUSDT&marginCoin=USDT&productType=USDT-FUTURES"
+    url = BASE_URL + path
+    ts = str(int(time.time() * 1000))
+    sign = sign_message(ts, "GET", path)
+    headers = {
+        "ACCESS-KEY": API_KEY,
+        "ACCESS-SIGN": sign,
+        "ACCESS-TIMESTAMP": ts,
+        "ACCESS-PASSPHRASE": API_PASSPHRASE
+    }
     try:
-        method = "GET"
-        query = "symbol=SOLUSDT&productType=USDT-FUTURES&marginCoin=USDT"
-        path = f"/api/v2/mix/account/account?{query}"
-        timestamp = str(int(time.time() * 1000))
-        sign = sign_message(timestamp, method, path)
-        headers = {
-            "ACCESS-KEY": API_KEY,
-            "ACCESS-SIGN": sign,
-            "ACCESS-TIMESTAMP": timestamp,
-            "ACCESS-PASSPHRASE": API_PASSPHRASE
-        }
-        res = requests.get(BASE_URL + path, headers=headers).json()
-        return float(res["data"]["accountEquity"]) if res["code"] == "00000" else None
+        r = requests.get(url, headers=headers).json()
+        return float(r["data"]["accountEquity"]) if r["code"] == "00000" else None
     except:
         return None
 
 def get_position_size():
+    path = "/api/v2/mix/position/single-position?symbol=SOLUSDT&marginCoin=USDT"
+    url = BASE_URL + path
+    ts = str(int(time.time() * 1000))
+    sign = sign_message(ts, "GET", path)
+    headers = {
+        "ACCESS-KEY": API_KEY,
+        "ACCESS-SIGN": sign,
+        "ACCESS-TIMESTAMP": ts,
+        "ACCESS-PASSPHRASE": API_PASSPHRASE
+    }
     try:
-        method = "GET"
-        path = "/api/v2/mix/position/single-position?symbol=SOLUSDT&marginCoin=USDT"
-        timestamp = str(int(time.time() * 1000))
-        sign = sign_message(timestamp, method, path)
-        headers = {
-            "ACCESS-KEY": API_KEY,
-            "ACCESS-SIGN": sign,
-            "ACCESS-TIMESTAMP": timestamp,
-            "ACCESS-PASSPHRASE": API_PASSPHRASE
-        }
-        res = requests.get(BASE_URL + path, headers=headers).json()
-        return float(res["data"]["total"]) if res["code"] == "00000" else 0
+        r = requests.get(url, headers=headers).json()
+        return float(r["data"]["total"]) if r["code"] == "00000" else 0
     except:
         return 0
 
-def get_market_price():
+def get_price():
+    url = BASE_URL + "/api/v2/mix/market/ticker?symbol=SOLUSDT&productType=USDT-FUTURES"
     try:
-        url = BASE_URL + "/api/v2/mix/market/ticker?symbol=SOLUSDT&productType=USDT-FUTURES"
-        res = requests.get(url).json()
-        return float(res["data"][0]["lastPr"]) if res["code"] == "00000" else 1.0
+        r = requests.get(url).json()
+        return float(r["data"][0]["lastPr"])
     except:
         return 1.0
 
 def send_order(side, size):
-    timestamp = str(int(time.time() * 1000))
     path = "/api/v2/mix/order/place-order"
-    method = "POST"
-    body_data = {
-        "symbol": "SOLUSDT", "marginCoin": "USDT", "side": side,
-        "orderType": "market", "size": str(size), "price": "",
-        "marginMode": "isolated", "productType": "USDT-FUTURES"
+    ts = str(int(time.time() * 1000))
+    data = {
+        "symbol": "SOLUSDT",
+        "marginCoin": "USDT",
+        "orderType": "market",
+        "side": side,
+        "size": str(size),
+        "price": "",
+        "marginMode": "isolated",
+        "productType": "USDT-FUTURES"
     }
-    body = json.dumps(body_data, separators=(',', ':'))
-    sign = sign_message(timestamp, method, path, body)
+    body = json.dumps(data, separators=(',', ':'))
+    sign = sign_message(ts, "POST", path, body)
     headers = {
-        "ACCESS-KEY": API_KEY, "ACCESS-SIGN": sign,
-        "ACCESS-TIMESTAMP": timestamp, "ACCESS-PASSPHRASE": API_PASSPHRASE,
+        "ACCESS-KEY": API_KEY,
+        "ACCESS-SIGN": sign,
+        "ACCESS-TIMESTAMP": ts,
+        "ACCESS-PASSPHRASE": API_PASSPHRASE,
         "Content-Type": "application/json"
     }
     res = requests.post(BASE_URL + path, headers=headers, data=body)
-    print(f"📬 주문 응답 ({side} {size}):", res.status_code, res.text)
+    print(f"📤 주문 ({side} {size}):", res.status_code, res.text)
     return res.json()
 
 def place_entry(signal, equity, strength):
     direction = "buy" if "LONG" in signal else "sell"
     leverage = 4
-    price = get_market_price()
+    price = get_price()
     base_risk = 0.24
     steps = 1 if strength >= 2.0 else 3 if strength >= 1.6 else 5
     portion = 1 / steps
     raw_size = (equity * base_risk * leverage * strength * portion) / price
     max_size = (equity * 0.9 * portion) / price
-    size = floor(min(raw_size, max_size) * 10) / 10
+    size = min(raw_size, max_size)
+    size = floor(size * 10) / 10
     if size < 0.1 or size * price < 5:
-        print("❌ 주문 수량 미달:", size)
-        return {"error": "size too small"}
-
-    # 포지션 정보 저장
-    position_info["side"] = "LONG" if "LONG" in signal else "SHORT"
-    position_info["entry_price"] = price
-    position_info["strength"] = strength
-    print(f"💾 진입가 저장: {position_info}")
+        print("❌ 진입 실패: 수량 부족")
+        return {"error": "too small"}
     return send_order(direction, size)
 
-def check_exit_conditions():
-    entry_price = position_info["entry_price"]
-    direction = position_info["side"]
-    strength = position_info["strength"]
-    size = get_position_size()
-    price = get_market_price()
-
-    if entry_price is None or direction is None or size == 0:
-        return
+def place_exit(signal, strength):
+    direction = "sell" if "LONG" in signal else "buy"
+    pos = get_position_size()
+    if pos <= 0:
+        print(f"⛔ 포지션 없음. 스킵: {signal}")
+        return {"skip": True}
 
     tp1_ratio = min(max(0.3 + (strength - 1.0) * 0.3, 0.3), 0.6)
     tp2_ratio = 1.0 - tp1_ratio
-    tp1_price = entry_price * (1 + 0.0095 if direction == "LONG" else 1 - 0.0095)
-    tp2_price = entry_price * (1 + 0.0225 if direction == "LONG" else 1 - 0.0225)
-    sl_price = entry_price * (1 - 0.006 if direction == "LONG" else 1 + 0.006)
+    size = pos
+    if "TP1" in signal:
+        size = floor(pos * tp1_ratio * 10) / 10
+    elif "TP2" in signal:
+        size = floor(pos * tp2_ratio * 10) / 10
+    elif "SL_SLOW" in signal:
+        size = floor(pos * 0.5 * 10) / 10
+    return send_order(direction, size)
 
-    print(f"🔎 현재가: {price:.4f}, TP1: {tp1_price:.4f}, TP2: {tp2_price:.4f}, SL: {sl_price:.4f}")
-
-    if direction == "LONG":
-        if price >= tp2_price:
-            return send_order("sell", floor(size * tp2_ratio * 10) / 10)
-        elif price >= tp1_price:
-            return send_order("sell", floor(size * tp1_ratio * 10) / 10)
-        elif price <= sl_price:
-            return send_order("sell", floor(size * 0.5 * 10) / 10)
-    else:
-        if price <= tp2_price:
-            return send_order("buy", floor(size * tp2_ratio * 10) / 10)
-        elif price <= tp1_price:
-            return send_order("buy", floor(size * tp1_ratio * 10) / 10)
-        elif price >= sl_price:
-            return send_order("buy", floor(size * 0.5 * 10) / 10)
+def finalize_remaining(signal):
+    direction = "sell" if "LONG" in signal else "buy"
+    size = get_position_size()
+    if 0 < size < 0.1:
+        print("⚠️ 잔여 포지션 전량 청산:", size)
+        return send_order(direction, floor(size * 10) / 10)
+    return {"status": "done"}
 
 @app.route('/', methods=['POST'])
 def webhook():
     try:
         data = request.get_json(force=True)
-        print("📦 웹훅 수신:", data)
         signal = data.get("signal")
         strength = float(data.get("strength", 1.0))
 
-        if "ENTRY" in signal:
-            equity = get_equity()
-            if equity is None:
-                return "잔고 조회 오류", 500
-            result = place_entry(signal, equity, strength)
-        return jsonify({"status": "received"})
-    except Exception as e:
-        print("❌ 웹훅 오류:", str(e))
-        return "error", 500
+        print("📦 수신:", data)
 
-@app.route('/monitor', methods=['GET'])
-def monitor():
-    try:
-        check_exit_conditions()
-        return jsonify({"status": "checked"})
+        if "ENTRY" in signal:
+            eq = get_equity()
+            if not eq:
+                return "잔고 조회 실패", 500
+            res = place_entry(signal, eq, strength)
+        elif "EXIT" in signal:
+            res = place_exit(signal, strength)
+            finalize_remaining(signal)
+        else:
+            return "Unknown signal", 400
+
+        return jsonify({"status": "ok", "result": res})
     except Exception as e:
-        return str(e), 500
+        print("❌ 오류:", e)
+        return "Error", 500
 
 @app.route('/ping', methods=['GET'])
 def ping():
