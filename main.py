@@ -1,5 +1,4 @@
-# Re-run full content since previous state was reset
-import os, time, hmac, hashlib, base64, json, re
+import os, time, hmac, hashlib, base64, json
 import requests
 from flask import Flask, request, jsonify
 from math import floor
@@ -53,7 +52,7 @@ def get_position_size(retry=1):
                     return pos
         except:
             pass
-        time.sleep(0.8)
+        time.sleep(0.5)
     return 0
 
 def get_price():
