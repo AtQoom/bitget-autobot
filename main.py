@@ -88,6 +88,7 @@ def place_entry(signal, equity, strength):
     leverage = 4
     price = get_price()
     base_risk = 0.24
+    slippage = 0.005
     steps = 1 if strength >= 2.0 else 3 if strength >= 1.6 else 5
     portion = 1 / steps
     raw_size = (equity * base_risk * leverage * strength * portion) / price
@@ -106,7 +107,7 @@ def place_exit(signal, strength):
         print(f"⛔ 포지션 없음. 스킵: {signal}")
         return {"skip": True}
 
-    tp1_ratio = min(max(0.3 + (strength - 1.0) * 0.3, 0.3), 0.6)
+    tp1_ratio = min(max(0.3 + (strength - 1.0) * 0.3, 0.3), 0.65)
     tp2_ratio = 1.0 - tp1_ratio
     size = pos
     if "TP1" in signal:
@@ -115,6 +116,8 @@ def place_exit(signal, strength):
         size = floor(pos * tp2_ratio * 10) / 10
     elif "SL_SLOW" in signal:
         size = floor(pos * 0.5 * 10) / 10
+    elif "SL_HARD" in signal:
+        size = floor(pos * 10) / 10
     return send_order(direction, size)
 
 def finalize_remaining(signal):
@@ -139,13 +142,16 @@ def webhook():
             if not eq:
                 return "잔고 조회 실패", 500
             res = place_entry(signal, eq, strength)
+
         elif "EXIT" in signal:
             res = place_exit(signal, strength)
             finalize_remaining(signal)
+
         else:
             return "Unknown signal", 400
 
         return jsonify({"status": "ok", "result": res})
+
     except Exception as e:
         print("❌ 오류:", e)
         return "Error", 500
