@@ -32,28 +32,22 @@ def get_equity():
     except:
         return None
 
-def get_position_size(retry=1):
+def get_position_size():
     path = "/api/v2/mix/position/single-position?symbol=SOLUSDT&marginCoin=USDT"
     url = BASE_URL + path
-    for _ in range(retry + 1):
-        try:
-            ts = str(int(time.time() * 1000))
-            sign = sign_message(ts, "GET", path)
-            headers = {
-                "ACCESS-KEY": API_KEY,
-                "ACCESS-SIGN": sign,
-                "ACCESS-TIMESTAMP": ts,
-                "ACCESS-PASSPHRASE": API_PASSPHRASE
-            }
-            r = requests.get(url, headers=headers).json()
-            if r["code"] == "00000":
-                pos = float(r["data"]["total"])
-                if pos > 0:
-                    return pos
-        except:
-            pass
-        time.sleep(0.5)
-    return 0
+    try:
+        ts = str(int(time.time() * 1000))
+        sign = sign_message(ts, "GET", path)
+        headers = {
+            "ACCESS-KEY": API_KEY,
+            "ACCESS-SIGN": sign,
+            "ACCESS-TIMESTAMP": ts,
+            "ACCESS-PASSPHRASE": API_PASSPHRASE
+        }
+        r = requests.get(url, headers=headers).json()
+        return float(r["data"]["total"]) if r["code"] == "00000" else 0
+    except:
+        return 0
 
 def get_price():
     url = BASE_URL + "/api/v2/mix/market/ticker?symbol=SOLUSDT&productType=USDT-FUTURES"
@@ -86,7 +80,7 @@ def send_order(side, size):
         "Content-Type": "application/json"
     }
     res = requests.post(BASE_URL + path, headers=headers, data=body)
-    print(f"📤 주문 ({side} {size}):", res.status_code, res.text)
+    print(f"📤 주문 요청 ({side} {size}):", res.status_code, res.text)
     return res.json()
 
 def place_entry(signal, equity, strength):
@@ -94,25 +88,38 @@ def place_entry(signal, equity, strength):
     leverage = 4
     price = get_price()
     base_risk = 0.24
-    steps = 1 if strength >= 2.0 else 3 if strength >= 1.6 else 5
-    portion = 1 / steps
+    strength = max(1.0, min(strength, 2.0))
+
+    # 단계 및 비중 계산
+    if strength >= 2.0:
+        steps = 1
+        portion = 0.5
+    elif strength >= 1.6:
+        steps = 2
+        portion = 0.3
+    else:
+        steps = 3
+        portion = 0.2
+
     raw_size = (equity * base_risk * leverage * strength * portion) / price
     max_size = (equity * 0.9 * portion) / price
     size = min(raw_size, max_size)
     size = floor(size * 10) / 10
+
     if size < 0.1 or size * price < 5:
         print("❌ 진입 실패: 수량 부족")
         return {"error": "too small"}
+
     return send_order(direction, size)
 
 def place_exit(signal, strength):
     direction = "sell" if "LONG" in signal else "buy"
-    pos = get_position_size(retry=1)
+    pos = get_position_size()
     if pos <= 0:
-        print(f"⛔ 포지션 없음. 스킵 시도 후 수동 청산 확인: {signal}")
+        print(f"⛔ 포지션 없음 → 강제 청산 시도: {signal}")
         return finalize_remaining(signal)
 
-    tp1_ratio = min(max(0.3 + (strength - 1.0) * 0.3, 0.3), 0.6)
+    tp1_ratio = min(max(0.3 + (strength - 1.0) * 0.3, 0.3), 0.65)
     tp2_ratio = 1.0 - tp1_ratio
     size = pos
     if "TP1" in signal:
@@ -121,24 +128,24 @@ def place_exit(signal, strength):
         size = floor(pos * tp2_ratio * 10) / 10
     elif "SL_SLOW" in signal:
         size = floor(pos * 0.5 * 10) / 10
+
     return send_order(direction, size)
 
 def finalize_remaining(signal):
     direction = "sell" if "LONG" in signal else "buy"
-    size = get_position_size(retry=1)
+    size = get_position_size()
     if 0 < size < 0.11:
-        print("⚠️ 잔여 포지션 전량 청산:", size)
+        print("⚠️ 잔여 포지션 청산:", size)
         return send_order(direction, floor(size * 10) / 10)
     return {"status": "done"}
 
-@app.route('/', methods=['POST'])
+@app.route("/", methods=["POST"])
 def webhook():
     try:
         data = request.get_json(force=True)
         signal = data.get("signal")
         strength = float(data.get("strength", 1.0))
-
-        print("📦 수신:", data)
+        print("📦 웹훅 수신:", data)
 
         if "ENTRY" in signal:
             eq = get_equity()
@@ -156,9 +163,9 @@ def webhook():
         print("❌ 오류:", e)
         return "Error", 500
 
-@app.route('/ping', methods=['GET'])
+@app.route("/ping", methods=["GET"])
 def ping():
     return "pong", 200
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)
