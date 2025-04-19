@@ -59,7 +59,7 @@ def get_price():
     url = BASE_URL + "/api/v2/mix/market/ticker?symbol=SOLUSDT&productType=USDT-FUTURES"
     try:
         r = requests.get(url).json()
-        return float(r["data"][0]["lastPr"])
+        return float(r["data"]["lastPr"])
     except:
         return 1.0
 
@@ -74,7 +74,7 @@ def send_order(side, size, reduce_only=False):
         "size": str(size),
         "price": "",
         "marginMode": "isolated",
-        "reduceOnly": str(reduce_only).lower(),
+        "reduceOnly": reduce_only,
         "productType": "USDT-FUTURES"
     }
     body = json.dumps(data, separators=(',', ':'))
@@ -100,17 +100,11 @@ def place_entry(signal, equity, strength):
     raw_size = (equity * base_risk * leverage * strength * portion) / price
     max_size = (equity * 0.9 * portion) / price
     size = min(raw_size, max_size)
-    
-    # ✅ 수정: 최소 수량 보정
-    if size < 0.1:
-        print(f"🔄 수량 보정: {size:.3f} → 0.1 (최소 수량)")
-        size = 0.1
-
-    size = round(size, 1)
+    size = round(max(size, 0.1), 1)
 
     if size * price < 5:
-        print("❌ 진입 실패: 총 금액 미달", size, price)
-        return {"error": "total too small"}
+        print("❌ 진입 실패: 수량 부족", size)
+        return {"error": "too small"}
 
     return send_order(direction, size, reduce_only=False)
 
