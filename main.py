@@ -64,7 +64,7 @@ def get_price():
     except:
         return 1.0
 
-def send_order(side, size, reduce_only=False, hold_side=None):
+def send_order(side, size, reduce_only=False, hold_side=None, trade_side=None):
     path = "/api/v2/mix/order/place-order"
     ts = str(int(time.time() * 1000))
     data = {
@@ -81,6 +81,8 @@ def send_order(side, size, reduce_only=False, hold_side=None):
         data["reduceOnly"] = "YES"
     if hold_side:
         data["holdSide"] = hold_side
+    if trade_side:
+        data["tradeSide"] = trade_side
 
     body = json.dumps(data, separators=(',', ':'))
     sign = sign_message(ts, "POST", path, body)
@@ -96,7 +98,8 @@ def send_order(side, size, reduce_only=False, hold_side=None):
     return res.json()
 
 def place_entry(signal, equity, strength):
-    direction = "buy" if "LONG" in signal else "sell"
+    is_long = "LONG" in signal
+    direction = "buy" if is_long else "sell"
     leverage = 4
     price = get_price()
     base_risk = 0.24
@@ -111,8 +114,8 @@ def place_entry(signal, equity, strength):
         print("❌ 진입 실패: 수량 부족", size)
         return {"error": "too small"}
 
-    hold = "long" if direction == "buy" else "short"
-    return send_order(direction, size, reduce_only=False, hold_side=hold)
+    hold = "long" if is_long else "short"
+    return send_order(direction, size, reduce_only=False, hold_side=hold, trade_side="open")
 
 def place_exit(signal, strength):
     is_long = "LONG" in signal
@@ -137,7 +140,7 @@ def place_exit(signal, strength):
         return finalize_remaining(signal)
 
     hold = "long" if is_long else "short"
-    return send_order(direction, size, reduce_only=True, hold_side=hold)
+    return send_order(direction, size, reduce_only=True, hold_side=hold, trade_side="close")
 
 def finalize_remaining(signal):
     is_long = "LONG" in signal
@@ -150,7 +153,7 @@ def finalize_remaining(signal):
         size = round(size, 1)
         print("🔄 잔여 포지션 전량 청산:", size)
         hold = "long" if is_long else "short"
-        return send_order(direction, size, reduce_only=True, hold_side=hold)
+        return send_order(direction, size, reduce_only=True, hold_side=hold, trade_side="close")
     return {"status": "done"}
 
 @app.route('/', methods=['POST'])
