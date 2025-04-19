@@ -1,4 +1,3 @@
-
 import os, time, hmac, hashlib, base64, json
 import requests
 from flask import Flask, request, jsonify
@@ -64,7 +63,7 @@ def get_price():
     except:
         return 1.0
 
-def send_order(side, size):
+def send_order(side, size, reduce_only=False):
     path = "/api/v2/mix/order/place-order"
     ts = str(int(time.time() * 1000))
     data = {
@@ -75,6 +74,7 @@ def send_order(side, size):
         "size": str(size),
         "price": "",
         "marginMode": "isolated",
+        "reduceOnly": reduce_only,
         "productType": "USDT-FUTURES"
     }
     body = json.dumps(data, separators=(',', ':'))
@@ -87,18 +87,8 @@ def send_order(side, size):
         "Content-Type": "application/json"
     }
     res = requests.post(BASE_URL + path, headers=headers, data=body)
-    print(f"📤 주문 ({side} {size}):", res.status_code, res.text)
+    print(f"📤 주문 ({side} {size}) {'[청산]' if reduce_only else '[진입]'} →", res.status_code, res.text)
     return res.json()
-
-def finalize_remaining(signal):
-    direction = "sell" if "LONG" in signal else "buy"
-    time.sleep(0.5)
-    size = get_position_size()
-    if 0 < size < 0.11:
-        print("⚠️ 잔여 포지션 전량 청산 시도:", size)
-        return send_order(direction, floor(size * 10) / 10)
-    print(f"✅ 최종 청산 상태 확인 완료: 잔여 수량 = {size}")
-    return {"status": "final_checked"}
 
 def place_entry(signal, equity, strength):
     direction = "buy" if "LONG" in signal else "sell"
@@ -110,33 +100,48 @@ def place_entry(signal, equity, strength):
     raw_size = (equity * base_risk * leverage * strength * portion) / price
     max_size = (equity * 0.9 * portion) / price
     size = min(raw_size, max_size)
-    size = floor(size * 10) / 10
+    size = round(size, 1)
+
     if size < 0.1 or size * price < 5:
-        print("❌ 진입 실패: 수량 부족")
+        print("❌ 진입 실패: 수량 부족", size)
         return {"error": "too small"}
-    return send_order(direction, size)
+
+    return send_order(direction, size, reduce_only=False)
 
 def place_exit(signal, strength):
     direction = "sell" if "LONG" in signal else "buy"
-    pos = get_position_size()
+    pos = get_position_size(retry=1)
     if pos <= 0:
-        print(f"⛔ 포지션 없음: {signal} → finalize_remaining")
+        print(f"⛔ 포지션 없음. {signal} → finalize_remaining()")
         return finalize_remaining(signal)
 
-    tp1_ratio = min(max(0.3 + (strength - 1.0) * 0.3, 0.3), 0.65)
+    tp1_ratio = min(max(0.3 + (strength - 1.0) * 0.3, 0.3), 0.6)
     tp2_ratio = 1.0 - tp1_ratio
     size = pos
     if "TP1" in signal:
-        size = floor(pos * tp1_ratio * 10) / 10
+        size = round(pos * tp1_ratio, 1)
     elif "TP2" in signal:
-        size = floor(pos * tp2_ratio * 10) / 10
+        size = round(pos * tp2_ratio, 1)
     elif "SL_SLOW" in signal:
-        size = floor(pos * 0.5 * 10) / 10
+        size = round(pos * 0.5, 1)
 
-    print(f"📊 청산 요청 ({signal}) | 현재 포지션: {pos} | 주문 수량: {size}")
-    res = send_order(direction, size)
-    time.sleep(0.5)
-    return finalize_remaining(signal)
+    if size < 0.1:
+        print("⚠️ 수량 너무 작음, finalize_remaining 대체 실행")
+        return finalize_remaining(signal)
+
+    return send_order(direction, size, reduce_only=True)
+
+def finalize_remaining(signal):
+    direction = "sell" if "LONG" in signal else "buy"
+    size = get_position_size(retry=1)
+    if size is None:
+        print("❗ 포지션 수량 조회 실패")
+        return {"error": "no position info"}
+    if 0 < size < 0.11:
+        size = round(size, 1)
+        print("🔄 잔여 포지션 전량 청산:", size)
+        return send_order(direction, size, reduce_only=True)
+    return {"status": "done"}
 
 @app.route('/', methods=['POST'])
 def webhook():
@@ -145,7 +150,7 @@ def webhook():
         signal = data.get("signal")
         strength = float(data.get("strength", 1.0))
 
-        print("📦 수신:", data)
+        print("📦 웹훅 수신:", data)
 
         if "ENTRY" in signal:
             eq = get_equity()
@@ -154,12 +159,13 @@ def webhook():
             res = place_entry(signal, eq, strength)
         elif "EXIT" in signal:
             res = place_exit(signal, strength)
+            finalize_remaining(signal)
         else:
-            return "Unknown signal", 400
+            return "❓ Unknown signal", 400
 
         return jsonify({"status": "ok", "result": res})
     except Exception as e:
-        print("❌ 오류:", e)
+        print("❌ 처리 오류:", e)
         return "Error", 500
 
 @app.route('/ping', methods=['GET'])
