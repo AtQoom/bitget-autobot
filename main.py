@@ -89,7 +89,7 @@ def send_order(side, size, reduce_only=False, hold_side=None, trade_side=None):
         "productType": "USDT-FUTURES",
         "tradeSide": trade_side,
         "holdSide": hold_side,
-        "reduceOnly": "true" if reduce_only else "false"
+        "reduceOnly": "YES" if reduce_only else "NO"
     }
 
     body = json.dumps(data, separators=(',', ':'))
