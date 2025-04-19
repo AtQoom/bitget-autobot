@@ -79,8 +79,6 @@ def send_order(side, size, reduce_only=False, hold_side=None, trade_side=None):
         "tradeSide": trade_side,
         "holdSide": hold_side
     }
-    if reduce_only:
-        data["reduceOnly"] = "YES"
 
     body = json.dumps(data, separators=(',', ':'))
     sign = sign_message(ts, "POST", path, body)
