@@ -10,10 +10,12 @@ API_SECRET = os.environ.get("API_SECRET")
 API_PASSPHRASE = os.environ.get("API_PASSPHRASE")
 BASE_URL = "https://api.bitget.com"
 
+
 def sign_message(timestamp, method, request_path, body=""):
     msg = f"{timestamp}{method}{request_path}{body}"
     mac = hmac.new(API_SECRET.encode(), msg.encode(), hashlib.sha256)
     return base64.b64encode(mac.digest()).decode()
+
 
 def get_equity():
     path = "/api/v2/mix/account/account?symbol=SOLUSDT&marginCoin=USDT&productType=USDT-FUTURES"
@@ -31,6 +33,7 @@ def get_equity():
         return float(r["data"]["accountEquity"]) if r["code"] == "00000" else None
     except:
         return None
+
 
 def get_position_size(direction="LONG", retry=1):
     path = "/api/v2/mix/position/single-position?symbol=SOLUSDT&marginCoin=USDT"
@@ -56,6 +59,7 @@ def get_position_size(direction="LONG", retry=1):
         time.sleep(0.5)
     return 0
 
+
 def get_price():
     url = BASE_URL + "/api/v2/mix/market/ticker?symbol=SOLUSDT&productType=USDT-FUTURES"
     try:
@@ -63,6 +67,7 @@ def get_price():
         return float(r["data"]["lastPr"])
     except:
         return 1.0
+
 
 def send_order(side, size, reduce_only=False):
     path = "/api/v2/mix/order/place-order"
@@ -76,7 +81,8 @@ def send_order(side, size, reduce_only=False):
         "price": "",
         "marginMode": "isolated",
         "reduceOnly": reduce_only,
-        "productType": "USDT-FUTURES"
+        "productType": "USDT-FUTURES",
+        "holdSide": "long" if side == "buy" else "short"
     }
     body = json.dumps(data, separators=(',', ':'))
     sign = sign_message(ts, "POST", path, body)
@@ -91,6 +97,7 @@ def send_order(side, size, reduce_only=False):
     print(f"📤 주문 ({side} {size}) {'[청산]' if reduce_only else '[진입]'} →", res.status_code, res.text)
     return res.json()
 
+
 def place_entry(signal, equity, strength):
     direction = "buy" if "LONG" in signal else "sell"
     leverage = 4
@@ -101,13 +108,14 @@ def place_entry(signal, equity, strength):
     raw_size = (equity * base_risk * leverage * strength * portion) / price
     max_size = (equity * 0.9 * portion) / price
     size = min(raw_size, max_size)
-    size = round(max(size, 0.1), 1)  # 수량 0.1 미만은 최소 0.1로 고정
+    size = round(max(size, 0.1), 1)
 
     if size * price < 5:
         print("❌ 진입 실패: 수량 부족", size)
         return {"error": "too small"}
 
     return send_order(direction, size, reduce_only=False)
+
 
 def place_exit(signal, strength):
     is_long = "LONG" in signal
@@ -133,6 +141,7 @@ def place_exit(signal, strength):
 
     return send_order(direction, size, reduce_only=True)
 
+
 def finalize_remaining(signal):
     is_long = "LONG" in signal
     direction = "sell" if is_long else "buy"
@@ -145,6 +154,7 @@ def finalize_remaining(signal):
         print("🔄 잔여 포지션 전량 청산:", size)
         return send_order(direction, size, reduce_only=True)
     return {"status": "done"}
+
 
 @app.route('/', methods=['POST'])
 def webhook():
@@ -170,6 +180,7 @@ def webhook():
     except Exception as e:
         print("❌ 처리 오류:", e)
         return "Error", 500
+
 
 @app.route('/ping', methods=['GET'])
 def ping():
