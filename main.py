@@ -10,12 +10,10 @@ API_SECRET = os.environ.get("API_SECRET")
 API_PASSPHRASE = os.environ.get("API_PASSPHRASE")
 BASE_URL = "https://api.bitget.com"
 
-
 def sign_message(timestamp, method, request_path, body=""):
     msg = f"{timestamp}{method}{request_path}{body}"
     mac = hmac.new(API_SECRET.encode(), msg.encode(), hashlib.sha256)
     return base64.b64encode(mac.digest()).decode()
-
 
 def get_equity():
     path = "/api/v2/mix/account/account?symbol=SOLUSDT&marginCoin=USDT&productType=USDT-FUTURES"
@@ -33,7 +31,6 @@ def get_equity():
         return float(r["data"]["accountEquity"]) if r["code"] == "00000" else None
     except:
         return None
-
 
 def get_position_size(direction="LONG", retry=1):
     path = "/api/v2/mix/position/single-position?symbol=SOLUSDT&marginCoin=USDT"
@@ -59,7 +56,6 @@ def get_position_size(direction="LONG", retry=1):
         time.sleep(0.5)
     return 0
 
-
 def get_price():
     url = BASE_URL + "/api/v2/mix/market/ticker?symbol=SOLUSDT&productType=USDT-FUTURES"
     try:
@@ -67,7 +63,6 @@ def get_price():
         return float(r["data"]["lastPr"])
     except:
         return 1.0
-
 
 def send_order(side, size, reduce_only=False, hold_side=None, trade_side=None):
     path = "/api/v2/mix/order/place-order"
@@ -80,14 +75,12 @@ def send_order(side, size, reduce_only=False, hold_side=None, trade_side=None):
         "size": str(size),
         "price": "",
         "marginMode": "isolated",
-        "productType": "USDT-FUTURES"
+        "productType": "USDT-FUTURES",
+        "tradeSide": trade_side,
+        "holdSide": hold_side
     }
     if reduce_only:
         data["reduceOnly"] = "YES"
-    if hold_side:
-        data["holdSide"] = hold_side
-    if trade_side:
-        data["tradeSide"] = trade_side
 
     body = json.dumps(data, separators=(',', ':'))
     sign = sign_message(ts, "POST", path, body)
@@ -102,7 +95,6 @@ def send_order(side, size, reduce_only=False, hold_side=None, trade_side=None):
     res = requests.post(BASE_URL + path, headers=headers, data=body)
     print(f"📤 주문 ({side} {size}) {'[청산]' if reduce_only else '[진입]'} →", res.status_code, res.text)
     return res.json()
-
 
 def place_entry(signal, equity, strength):
     is_long = "LONG" in signal
@@ -123,7 +115,6 @@ def place_entry(signal, equity, strength):
 
     hold = "long" if is_long else "short"
     return send_order(direction, size, reduce_only=False, hold_side=hold, trade_side="open")
-
 
 def place_exit(signal, strength):
     is_long = "LONG" in signal
@@ -150,7 +141,6 @@ def place_exit(signal, strength):
     hold = "long" if is_long else "short"
     return send_order(direction, size, reduce_only=True, hold_side=hold, trade_side="close")
 
-
 def finalize_remaining(signal):
     is_long = "LONG" in signal
     direction = "sell" if is_long else "buy"
@@ -164,7 +154,6 @@ def finalize_remaining(signal):
         hold = "long" if is_long else "short"
         return send_order(direction, size, reduce_only=True, hold_side=hold, trade_side="close")
     return {"status": "done"}
-
 
 @app.route('/', methods=['POST'])
 def webhook():
@@ -191,11 +180,9 @@ def webhook():
         print("❌ 처리 오류:", e)
         return "Error", 500
 
-
 @app.route('/ping', methods=['GET'])
 def ping():
     return "pong", 200
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
