@@ -64,6 +64,17 @@ def get_price():
     except:
         return 1.0
 
+def get_max_position_size():
+    url = BASE_URL + "/api/contract/v1/public/contracts"
+    try:
+        r = requests.get(url).json()
+        for item in r.get("data", []):
+            if item.get("symbol") == "SOLUSDT":
+                return float(item.get("maxOpenAmount", 0))
+    except:
+        pass
+    return None
+
 def send_order(side, size, reduce_only=False, hold_side=None, trade_side=None):
     path = "/api/v2/mix/order/place-order"
     ts = str(int(time.time() * 1000))
@@ -104,6 +115,11 @@ def place_entry(signal, equity, strength):
     portion = 1 / steps
     raw_size = (equity * base_risk * leverage * strength * portion) / price
     max_size = (equity * 0.9 * portion) / price
+
+    max_tier_size = get_max_position_size()
+    if max_tier_size:
+        max_size = min(max_size, max_tier_size)
+
     size = min(raw_size, max_size)
     size = round(max(size, 0.1), 1)
 
