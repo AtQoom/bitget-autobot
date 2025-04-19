@@ -75,7 +75,7 @@ def send_order(side, size, reduce_only=False, hold_side=None):
         "size": str(size),
         "price": "",
         "marginMode": "isolated",
-        "reduceOnly": reduce_only,
+        "reduceOnly": str(reduce_only).upper(),
         "productType": "USDT-FUTURES"
     }
     if hold_side:
