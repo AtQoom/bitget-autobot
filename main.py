@@ -32,7 +32,7 @@ def get_equity():
     except:
         return None
 
-def get_position_size(retry=1):
+def get_position_size(direction="LONG", retry=1):
     path = "/api/v2/mix/position/single-position?symbol=SOLUSDT&marginCoin=USDT"
     url = BASE_URL + path
     for _ in range(retry + 1):
@@ -47,9 +47,10 @@ def get_position_size(retry=1):
             }
             r = requests.get(url, headers=headers).json()
             if r["code"] == "00000":
-                pos = float(r["data"]["total"])
-                if pos > 0:
-                    return pos
+                data = r["data"]
+                long_pos = float(data.get("long", {}).get("available", 0))
+                short_pos = float(data.get("short", {}).get("available", 0))
+                return long_pos if direction == "LONG" else short_pos
         except:
             pass
         time.sleep(0.5)
@@ -109,8 +110,9 @@ def place_entry(signal, equity, strength):
     return send_order(direction, size, reduce_only=False)
 
 def place_exit(signal, strength):
-    direction = "sell" if "LONG" in signal else "buy"
-    pos = get_position_size(retry=1)
+    is_long = "LONG" in signal
+    direction = "sell" if is_long else "buy"
+    pos = get_position_size("LONG" if is_long else "SHORT", retry=1)
     if pos <= 0:
         print(f"⛔ 포지션 없음. {signal} → finalize_remaining()")
         return finalize_remaining(signal)
@@ -132,8 +134,9 @@ def place_exit(signal, strength):
     return send_order(direction, size, reduce_only=True)
 
 def finalize_remaining(signal):
-    direction = "sell" if "LONG" in signal else "buy"
-    size = get_position_size(retry=1)
+    is_long = "LONG" in signal
+    direction = "sell" if is_long else "buy"
+    size = get_position_size("LONG" if is_long else "SHORT", retry=1)
     if size is None:
         print("❗ 포지션 수량 조회 실패")
         return {"error": "no position info"}
