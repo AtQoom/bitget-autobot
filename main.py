@@ -121,6 +121,9 @@ def place_entry(signal, equity, strength):
     if max_tier_size:
         raw_size = min(raw_size, max_tier_size)
 
+    # 최대 시드 제한: 티어 한도 대비 초과 방지 (예: 98%)
+    raw_size = min(raw_size, (equity * leverage * 0.98) / price)
+
     size = round(max(raw_size, 0.1), 1)
 
     if size * price < 5:
