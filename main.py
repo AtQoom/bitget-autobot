@@ -119,10 +119,10 @@ def place_entry(signal, equity, strength):
 
     max_tier_size = get_max_position_size()
     if max_tier_size:
-        raw_size = min(raw_size, max_tier_size)
+        raw_size = min(raw_size, max_tier_size * 0.9)  # 안전 여유
 
-    # 최대 시드 제한: 티어 한도 대비 초과 방지 (예: 98%)
-    raw_size = min(raw_size, (equity * leverage * 0.98) / price)
+    max_equity_limit = (equity * leverage * 0.95) / price
+    raw_size = min(raw_size, max_equity_limit)
 
     size = round(max(raw_size, 0.1), 1)
 
