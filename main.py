@@ -88,9 +88,10 @@ def send_order(side, size, reduce_only=False, hold_side=None, trade_side=None):
         "marginMode": "isolated",
         "productType": "USDT-FUTURES",
         "tradeSide": trade_side,
-        "holdSide": hold_side,
-        "reduceOnly": "YES" if reduce_only else "NO"
+        "holdSide": hold_side
     }
+    if reduce_only:
+        data["reduceOnly"] = "YES"
 
     body = json.dumps(data, separators=(',', ':'))
     sign = sign_message(ts, "POST", path, body)
@@ -115,14 +116,12 @@ def place_entry(signal, equity, strength):
     steps = 1 if strength >= 2.0 else 3 if strength >= 1.6 else 5
     portion = 1 / steps
     raw_size = (equity * base_risk * leverage * strength * portion) / price
-    max_size = (equity * 0.9 * portion) / price
 
     max_tier_size = get_max_position_size()
     if max_tier_size:
-        max_size = min(max_size, max_tier_size)
+        raw_size = min(raw_size, max_tier_size)
 
-    size = min(raw_size, max_size)
-    size = round(max(size, 0.1), 1)
+    size = round(max(raw_size, 0.1), 1)
 
     if size * price < 5:
         print("❌ 진입 실패: 수량 부족", size)
