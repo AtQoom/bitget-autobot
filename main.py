@@ -110,7 +110,7 @@ def place_entry(signal, equity, strength):
     direction = "buy" if is_long else "sell"
     leverage = 4
     price = get_price()
-    base_risk = 0.24
+    base_risk = 0.11
     steps = 1 if strength >= 2.0 else 3 if strength >= 1.6 else 5
     portion = 1 / steps
     raw_size = (equity * base_risk * leverage * strength * portion) / price
