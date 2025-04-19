@@ -75,7 +75,7 @@ def send_order(side, size, reduce_only=False, hold_side=None):
         "size": str(size),
         "price": "",
         "marginMode": "isolated",
-        "reduceOnly": str(reduce_only).upper(),
+        "reduceOnly": "YES" if reduce_only else "NO",
         "productType": "USDT-FUTURES"
     }
     if hold_side:
@@ -91,7 +91,7 @@ def send_order(side, size, reduce_only=False, hold_side=None):
         "Content-Type": "application/json"
     }
     res = requests.post(BASE_URL + path, headers=headers, data=body)
-    print(f"📤 주문 ({side} {size}) {'[청산]' if reduce_only else '[진입]'} →", res.status_code, res.text)
+    print(f"\U0001f4e4 주문 ({side} {size}) {'[청산]' if reduce_only else '[진입]'} →", res.status_code, res.text)
     return res.json()
 
 def place_entry(signal, equity, strength):
