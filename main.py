@@ -101,7 +101,7 @@ def place_entry(signal, equity, strength):
     raw_size = (equity * base_risk * leverage * strength * portion) / price
     max_size = (equity * 0.9 * portion) / price
     size = min(raw_size, max_size)
-    size = round(max(size, 0.1), 1)
+    size = round(max(size, 0.1), 1)  # 수량 0.1 미만은 최소 0.1로 고정
 
     if size * price < 5:
         print("❌ 진입 실패: 수량 부족", size)
