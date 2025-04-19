@@ -74,7 +74,7 @@ def send_order(side, size, reduce_only=False):
         "size": str(size),
         "price": "",
         "marginMode": "isolated",
-        "reduceOnly": "true" if reduce_only else "false",
+        "reduceOnly": str(reduce_only).lower(),
         "productType": "USDT-FUTURES"
     }
     body = json.dumps(data, separators=(',', ':'))
@@ -87,7 +87,7 @@ def send_order(side, size, reduce_only=False):
         "Content-Type": "application/json"
     }
     res = requests.post(BASE_URL + path, headers=headers, data=body)
-    print(f"📤 주문 요청: ({side} {size}) {'[청산]' if reduce_only else '[진입]'} →", res.status_code, res.text)
+    print(f"📤 주문 ({side} {size}) {'[청산]' if reduce_only else '[진입]'} →", res.status_code, res.text)
     return res.json()
 
 def place_entry(signal, equity, strength):
@@ -100,13 +100,17 @@ def place_entry(signal, equity, strength):
     raw_size = (equity * base_risk * leverage * strength * portion) / price
     max_size = (equity * 0.9 * portion) / price
     size = min(raw_size, max_size)
+    
+    # ✅ 수정: 최소 수량 보정
+    if size < 0.1:
+        print(f"🔄 수량 보정: {size:.3f} → 0.1 (최소 수량)")
+        size = 0.1
+
     size = round(size, 1)
 
-    print(f"🔢 계산된 진입 수량: {size} (strength: {strength}, equity: {equity}, price: {price})")
-
-    if size < 0.1 or size * price < 5:
-        print("❌ 진입 실패: 수량이 너무 적거나 최소금액 미달")
-        return {"error": "too small"}
+    if size * price < 5:
+        print("❌ 진입 실패: 총 금액 미달", size, price)
+        return {"error": "total too small"}
 
     return send_order(direction, size, reduce_only=False)
 
