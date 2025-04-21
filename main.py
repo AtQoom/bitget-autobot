@@ -53,8 +53,8 @@ def get_position():
     }
     try:
         r = requests.get(url, headers=headers).json()
-        if r and r.get("code") == "00000" and r.get("data"):
-            return r["data"]
+        if r and r.get("code") == "00000" and isinstance(r.get("data"), list) and len(r["data"]) > 0:
+            return r["data"][0]  # ✅ 리스트의 첫 포지션만 사용
         else:
             print("❗ get_position() 응답 없음 또는 오류:", r)
             return {}
