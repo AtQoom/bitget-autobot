@@ -40,7 +40,7 @@ def get_price():
     except:
         return 1.0
 
-def get_position_size():
+def get_position():
     path = "/api/v2/mix/position/single-position?symbol=SOLUSDT&marginCoin=USDT"
     url = BASE_URL + path
     ts = str(int(time.time() * 1000))
@@ -53,9 +53,23 @@ def get_position_size():
     }
     try:
         r = requests.get(url, headers=headers).json()
-        return float(r["data"]["total"])
+        return r["data"]
+    except:
+        return None
+
+def get_position_size():
+    data = get_position()
+    try:
+        return float(data["total"])
     except:
         return 0
+
+def get_position_direction():
+    data = get_position()
+    try:
+        return data["holdSide"]  # 'long' or 'short'
+    except:
+        return None
 
 def send_order(side, size):
     path = "/api/v2/mix/order/place-order"
@@ -68,7 +82,8 @@ def send_order(side, size):
         "size": str(size),
         "price": "",
         "marginMode": "isolated",
-        "productType": "USDT-FUTURES"
+        "productType": "USDT-FUTURES",
+        "positionType": "single"
     }
     body = json.dumps(data, separators=(',', ':'))
     sign = sign_message(ts, "POST", path, body)
@@ -80,7 +95,7 @@ def send_order(side, size):
         "Content-Type": "application/json"
     }
     res = requests.post(BASE_URL + path, headers=headers, data=body)
-    print(f"📤 주문 ({side} {size}):", res.status_code, res.text)
+    print(f"\U0001f4e4 주문 ({side} {size}):", res.status_code, res.text)
     return res.json()
 
 def place_entry(signal, equity, strength):
@@ -101,6 +116,11 @@ def place_entry(signal, equity, strength):
 
 def place_exit(signal, strength):
     direction = "sell" if "LONG" in signal else "buy"
+    current_dir = get_position_direction()
+    expected_dir = "long" if direction == "sell" else "short"
+    if current_dir != expected_dir:
+        print(f"⛔ 현재 포지션 방향 불일치 ({current_dir}). 스킵: {signal}")
+        return {"skip": True}
     pos = get_position_size()
     if pos <= 0:
         print(f"⛔ 포지션 없음. 스킵: {signal}")
@@ -118,6 +138,11 @@ def place_exit(signal, strength):
 
 def finalize_remaining(signal):
     direction = "sell" if "LONG" in signal else "buy"
+    current_dir = get_position_direction()
+    expected_dir = "long" if direction == "sell" else "short"
+    if current_dir != expected_dir:
+        print(f"⛔ 최종청산 방향 불일치 ({current_dir}). 스킵: {signal}")
+        return {"skip": True}
     size = get_position_size()
     if 0 < size < 0.1:
         print("⚠️ 잔여 포지션 전량 청산:", size)
