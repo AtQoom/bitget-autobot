@@ -1,4 +1,4 @@
-import os, time, hmac, hashlib, base64, json
+import os, time, hmac, hashlib, base64, json, threading
 import requests
 from flask import Flask, request, jsonify
 from math import floor
@@ -10,7 +10,7 @@ API_SECRET = os.environ.get("API_SECRET")
 API_PASSPHRASE = os.environ.get("API_PASSPHRASE")
 BASE_URL = "https://api.bitget.com"
 
-ENTRY_PRICE = {}
+active_position = None  # 진입 정보 저장용 변수
 
 def sign_message(timestamp, method, request_path, body=""):
     msg = f"{timestamp}{method}{request_path}{body}"
@@ -23,26 +23,7 @@ def get_price():
         r = requests.get(url).json()
         return float(r["data"][0]["lastPr"])
     except:
-        return None
-
-def get_position():
-    path = "/api/v2/mix/position/single-position?symbol=SOLUSDT&marginCoin=USDT&productType=USDT-FUTURES"
-    url = BASE_URL + path
-    ts = str(int(time.time() * 1000))
-    sign = sign_message(ts, "GET", path)
-    headers = {
-        "ACCESS-KEY": API_KEY,
-        "ACCESS-SIGN": sign,
-        "ACCESS-TIMESTAMP": ts,
-        "ACCESS-PASSPHRASE": API_PASSPHRASE
-    }
-    try:
-        r = requests.get(url, headers=headers).json()
-        if r["code"] == "00000" and r["data"]:
-            return r["data"][0]
-    except:
-        pass
-    return {}
+        return 0
 
 def send_order(side, size):
     path = "/api/v2/mix/order/place-order"
@@ -67,73 +48,100 @@ def send_order(side, size):
         "ACCESS-PASSPHRASE": API_PASSPHRASE,
         "Content-Type": "application/json"
     }
-    return requests.post(BASE_URL + path, headers=headers, data=body).json()
+    res = requests.post(BASE_URL + path, headers=headers, data=body)
+    print(f"📤 주문 ({side} {size}):", res.status_code, res.text)
+    return res.json()
 
-def exit_by_target(direction, strength):
-    pos = get_position()
-    if not pos or float(pos.get("total", 0)) < 0.1:
-        return {"skip": True}
-    
-    side = pos["holdSide"]
-    entry_price = float(pos["openPrice"])
-    size = float(pos["total"])
-    
-    tp1_ratio = min(max(0.3 + (strength - 1.0) * 0.3, 0.3), 0.6)
-    tp2_ratio = 1.0 - tp1_ratio
-    tp1_qty = floor(size * tp1_ratio * 10) / 10
-    tp2_qty = floor(size * tp2_ratio * 10) / 10
-    sl_qty = floor(size * 0.5 * 10) / 10
+def tp_sl_loop():
+    global active_position
+    while True:
+        if active_position:
+            now = time.time()
+            price = get_price()
+            entry = active_position
+            side = entry["side"]
+            entry_price = entry["price"]
+            qty = entry["qty"]
+            strength = entry["strength"]
+            elapsed = now - entry["timestamp"]
 
-    price = get_price()
-    if not price:
-        return {"error": "no price"}
+            tp1 = entry_price * (1.0095 if side == "long" else 0.9905)
+            tp2 = entry_price * (1.0225 if side == "long" else 0.9775)
+            sl1 = entry_price * (0.994 if side == "long" else 1.006)
+            sl2 = entry_price * (0.991 if side == "long" else 1.009)
+            tp1_size = floor(qty * 0.3 * 10) / 10
+            tp2_size = floor(qty * 0.7 * 10) / 10
+            sl1_size = floor(qty * 0.5 * 10) / 10
 
-    tp1 = entry_price * (1.0095 if side == "long" else 0.9905)
-    tp2 = entry_price * (1.0225 if side == "long" else 0.9775)
-    sl_slow = entry_price * (0.994 if side == "long" else 1.006)
-    sl_hard = entry_price * (0.991 if side == "long" else 1.009)
-
-    result = {}
-    if side == "long":
-        if price >= tp2:
-            result = send_order("sell", tp2_qty)
-        elif price >= tp1:
-            result = send_order("sell", tp1_qty)
-        elif price <= sl_slow:
-            result = send_order("sell", sl_qty)
-        elif price <= sl_hard:
-            result = send_order("sell", size)
-    elif side == "short":
-        if price <= tp2:
-            result = send_order("buy", tp2_qty)
-        elif price <= tp1:
-            result = send_order("buy", tp1_qty)
-        elif price >= sl_slow:
-            result = send_order("buy", sl_qty)
-        elif price >= sl_hard:
-            result = send_order("buy", size)
-    return result
+            if side == "long":
+                if price >= tp1:
+                    send_order("sell", tp1_size)
+                if price >= tp2:
+                    send_order("sell", tp2_size)
+                    active_position = None
+                if price <= sl1:
+                    send_order("sell", sl1_size)
+                if price <= sl2:
+                    send_order("sell", qty)
+                    active_position = None
+            else:
+                if price <= tp1:
+                    send_order("buy", tp1_size)
+                if price <= tp2:
+                    send_order("buy", tp2_size)
+                    active_position = None
+                if price >= sl1:
+                    send_order("buy", sl1_size)
+                if price >= sl2:
+                    send_order("buy", qty)
+                    active_position = None
+        time.sleep(1)
 
 @app.route("/", methods=["POST"])
 def webhook():
+    global active_position
     try:
         data = request.get_json(force=True)
-        signal = data.get("signal", "")
+        signal = data.get("signal")
         strength = float(data.get("strength", 1.0))
-        print("📦 Signal received:", signal, "| Strength:", strength)
+        print("📦 웹훅 수신:", data)
 
         if "ENTRY" in signal:
-            return jsonify({"status": "entry ignored (for now)"})
-        elif "EXIT" in signal:
-            result = exit_by_target(signal, strength)
-            return jsonify(result)
-        return "unknown", 400
+            if active_position:
+                print("🚫 이미 포지션 있음, 무시")
+                return jsonify({"status": "ignored"})
+
+            direction = "buy" if "LONG" in signal else "sell"
+            side = "long" if "LONG" in signal else "short"
+            leverage = 4
+            eq = 100  # 추정 잔고, 필요시 get_equity()로 대체
+            price = get_price()
+            steps = 1 if strength >= 2.0 else 3 if strength >= 1.6 else 5
+            portion = 1 / steps
+            raw_size = (eq * 0.24 * leverage * strength * portion) / price
+            qty = floor(raw_size * 10) / 10
+
+            res = send_order(direction, qty)
+            active_position = {
+                "side": side,
+                "price": price,
+                "qty": qty,
+                "strength": strength,
+                "timestamp": time.time()
+            }
+            return jsonify({"status": "entered", "price": price, "qty": qty})
+        else:
+            return "신호 무시됨", 200
     except Exception as e:
-        return {"error": str(e)}, 500
+        print("❌ 오류:", e)
+        return "Error", 500
 
 @app.route("/ping", methods=["GET"])
 def ping():
     return "pong", 200
+
+# 백그라운드 TP/SL 루프 시작
+threading.Thread(target=tp_sl_loop, daemon=True).start()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
