@@ -41,7 +41,7 @@ def get_price():
         return 1.0
 
 def get_position():
-    path = "/api/v2/mix/position/single-position?symbol=SOLUSDT&marginCoin=USDT"
+    path = "/api/v2/mix/position/single-position?symbol=SOLUSDT&marginCoin=USDT&productType=USDT-FUTURES"
     url = BASE_URL + path
     ts = str(int(time.time() * 1000))
     sign = sign_message(ts, "GET", path)
@@ -105,7 +105,7 @@ def send_order(side, size):
         "Content-Type": "application/json"
     }
     res = requests.post(BASE_URL + path, headers=headers, data=body)
-    print(f"\U0001f4e4 주문 ({side} {size}):", res.status_code, res.text)
+    print(f"📤 주문 ({side} {size}):", res.status_code, res.text)
     return res.json()
 
 def place_entry(signal, equity, strength):
