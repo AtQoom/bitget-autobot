@@ -54,7 +54,7 @@ def get_position():
     try:
         r = requests.get(url, headers=headers).json()
         if r and r.get("code") == "00000" and isinstance(r.get("data"), list) and len(r["data"]) > 0:
-            return r["data"][0]  # ✅ 리스트의 첫 포지션만 사용
+            return r["data"][0]
         else:
             print("❗ get_position() 응답 없음 또는 오류:", r)
             return {}
@@ -125,26 +125,38 @@ def place_entry(signal, equity, strength):
     return send_order(direction, size)
 
 def place_exit(signal, strength):
-    direction = "sell" if "LONG" in signal else "buy"
-    current_dir = get_position_direction()
-    expected_dir = "long" if direction == "sell" else "short"
-    if current_dir != expected_dir:
-        print(f"⛔ 현재 포지션 방향 불일치 ({current_dir}). 스킵: {signal}")
-        return {"skip": True}
     pos = get_position_size()
     if pos <= 0:
         print(f"⛔ 포지션 없음. 스킵: {signal}")
         return {"skip": True}
+
+    direction = "sell" if "LONG" in signal else "buy"
+    pos_dir = get_position_direction()
+
     tp1_ratio = min(max(0.3 + (strength - 1.0) * 0.3, 0.3), 0.6)
     tp2_ratio = 1.0 - tp1_ratio
     size = pos
-    if "TP1" in signal:
-        size = floor(pos * tp1_ratio * 10) / 10
-    elif "TP2" in signal:
-        size = floor(pos * tp2_ratio * 10) / 10
-    elif "SL_SLOW" in signal:
-        size = floor(pos * 0.5 * 10) / 10
-    return send_order(direction, size)
+
+    if "TP1" in signal or "TP2" in signal or "SL_SLOW" in signal:
+        if pos_dir == "long" and direction == "sell":
+            if "TP1" in signal:
+                size = floor(pos * tp1_ratio * 10) / 10
+            elif "TP2" in signal:
+                size = floor(pos * tp2_ratio * 10) / 10
+            elif "SL_SLOW" in signal:
+                size = floor(pos * 0.5 * 10) / 10
+            return send_order("sell", size)
+        elif pos_dir == "short" and direction == "buy":
+            if "TP1" in signal:
+                size = floor(pos * tp1_ratio * 10) / 10
+            elif "TP2" in signal:
+                size = floor(pos * tp2_ratio * 10) / 10
+            elif "SL_SLOW" in signal:
+                size = floor(pos * 0.5 * 10) / 10
+            return send_order("buy", size)
+
+    print(f"⛔ 포지션 방향 불일치 또는 신호 없음. 스킵: {signal}")
+    return {"skip": True}
 
 def finalize_remaining(signal):
     direction = "sell" if "LONG" in signal else "buy"
