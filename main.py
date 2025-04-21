@@ -67,8 +67,13 @@ def get_position_size():
 def get_position_direction():
     data = get_position()
     try:
-        return data["holdSide"]  # 'long' or 'short'
-    except:
+        side = data.get("holdSide", None)
+        if side not in ["long", "short"]:
+            print("❗ holdSide 값 없음 또는 비정상:", side)
+            return None
+        return side
+    except Exception as e:
+        print("❗ holdSide 조회 오류:", e)
         return None
 
 def send_order(side, size):
