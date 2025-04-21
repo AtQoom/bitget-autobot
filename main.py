@@ -5,28 +5,44 @@ from math import floor
 
 app = Flask(__name__)
 
-# 환경 변수
 API_KEY = os.environ.get("API_KEY")
 API_SECRET = os.environ.get("API_SECRET")
 API_PASSPHRASE = os.environ.get("API_PASSPHRASE")
 BASE_URL = "https://api.bitget.com"
 
-# 서명 생성
 def sign_message(timestamp, method, request_path, body=""):
     msg = f"{timestamp}{method}{request_path}{body}"
     mac = hmac.new(API_SECRET.encode(), msg.encode(), hashlib.sha256)
     return base64.b64encode(mac.digest()).decode()
 
-# 현재가 조회
+# ✅ 자산 조회 함수 (ENTRY 시 수량 계산용)
+def get_equity():
+    path = "/api/v2/mix/account/account?symbol=SOLUSDT&marginCoin=USDT&productType=USDT-FUTURES"
+    url = BASE_URL + path
+    ts = str(int(time.time() * 1000))
+    sign = sign_message(ts, "GET", path)
+    headers = {
+        "ACCESS-KEY": API_KEY,
+        "ACCESS-SIGN": sign,
+        "ACCESS-TIMESTAMP": ts,
+        "ACCESS-PASSPHRASE": API_PASSPHRASE
+    }
+    try:
+        r = requests.get(url, headers=headers).json()
+        return float(r["data"]["accountEquity"]) if r["code"] == "00000" else None
+    except:
+        return None
+
+# ✅ 현재가 조회
 def get_price():
     url = BASE_URL + "/api/v2/mix/market/ticker?symbol=SOLUSDT&productType=USDT-FUTURES"
     try:
         r = requests.get(url).json()
         return float(r["data"][0]["lastPr"])
     except:
-        return 0
+        return 1.0
 
-# 포지션 정보
+# ✅ 포지션 정보 조회
 def get_position():
     path = "/api/v2/mix/position/single-position?symbol=SOLUSDT&marginCoin=USDT&productType=USDT-FUTURES"
     url = BASE_URL + path
@@ -40,13 +56,33 @@ def get_position():
     }
     try:
         r = requests.get(url, headers=headers).json()
-        if r["code"] == "00000" and isinstance(r["data"], list) and len(r["data"]) > 0:
+        if r.get("code") == "00000" and isinstance(r.get("data"), list) and len(r["data"]) > 0:
             return r["data"][0]
+        else:
+            return {}
     except:
-        pass
-    return {}
+        return {}
 
-# 주문 실행
+def get_position_size():
+    data = get_position()
+    try:
+        return float(data.get("total", 0))
+    except:
+        return 0
+
+def get_position_direction():
+    data = get_position()
+    try:
+        side = data.get("holdSide", None)
+        if side in ["long", "short"]:
+            return side
+        else:
+            print("❗ holdSide 비정상:", side)
+            return None
+    except:
+        return None
+
+# ✅ 주문 실행
 def send_order(side, size):
     path = "/api/v2/mix/order/place-order"
     ts = str(int(time.time() * 1000))
@@ -74,7 +110,7 @@ def send_order(side, size):
     print(f"📤 주문 ({side} {size}):", res.status_code, res.text)
     return res.json()
 
-# 진입 처리
+# ✅ 진입 처리
 def place_entry(signal, equity, strength):
     direction = "buy" if "LONG" in signal else "sell"
     leverage = 4
@@ -91,52 +127,72 @@ def place_entry(signal, equity, strength):
         return {"error": "too small"}
     return send_order(direction, size)
 
-# 청산 처리
-def execute_exit(signal, strength):
-    pos = get_position()
-    if not pos or float(pos.get("total", 0)) == 0:
-        print("❌ 포지션 없음. 스킵")
+# ✅ 청산 처리
+def place_exit(signal, strength):
+    pos = get_position_size()
+    if pos <= 0:
+        print(f"⛔ 포지션 없음. 스킵: {signal}")
         return {"skip": True}
-    
-    size = float(pos["total"])
-    side = pos["holdSide"]
-    direction = "sell" if side == "long" else "buy"
+
+    direction = "sell" if "LONG" in signal else "buy"
+    pos_dir = get_position_direction()
+
     tp1_ratio = min(max(0.3 + (strength - 1.0) * 0.3, 0.3), 0.6)
     tp2_ratio = 1.0 - tp1_ratio
+    size = pos
 
-    if "TP1" in signal:
-        qty = floor(size * tp1_ratio * 10) / 10
-    elif "TP2" in signal:
-        qty = floor(size * tp2_ratio * 10) / 10
-    elif "SL_SLOW" in signal:
-        qty = floor(size * 0.5 * 10) / 10
-    elif "SL_HARD" in signal:
-        qty = floor(size * 10) / 10
-    else:
-        return {"error": "unknown signal"}
+    if "TP1" in signal or "TP2" in signal or "SL_SLOW" in signal:
+        if pos_dir == "long" and direction == "sell":
+            if "TP1" in signal:
+                size = floor(pos * tp1_ratio * 10) / 10
+            elif "TP2" in signal:
+                size = floor(pos * tp2_ratio * 10) / 10
+            elif "SL_SLOW" in signal:
+                size = floor(pos * 0.5 * 10) / 10
+            return send_order("sell", size)
+        elif pos_dir == "short" and direction == "buy":
+            if "TP1" in signal:
+                size = floor(pos * tp1_ratio * 10) / 10
+            elif "TP2" in signal:
+                size = floor(pos * tp2_ratio * 10) / 10
+            elif "SL_SLOW" in signal:
+                size = floor(pos * 0.5 * 10) / 10
+            return send_order("buy", size)
 
-    if qty >= 0.1:
-        return send_order(direction, qty)
-    return {"skip": "too small"}
+    print(f"⛔ 포지션 방향 불일치. 스킵: {signal}")
+    return {"skip": True}
 
-# 웹훅 수신
+# ✅ 잔여 포지션 정리
+def finalize_remaining(signal):
+    direction = "sell" if "LONG" in signal else "buy"
+    current_dir = get_position_direction()
+    expected_dir = "long" if direction == "sell" else "short"
+    if current_dir != expected_dir:
+        print(f"⛔ 최종청산 방향 불일치. 스킵: {signal}")
+        return {"skip": True}
+    size = get_position_size()
+    if 0 < size < 0.1:
+        print("⚠️ 잔여 포지션 전량 청산:", size)
+        return send_order(direction, floor(size * 10) / 10)
+    return {"status": "done"}
+
+# ✅ 웹훅 처리
 @app.route('/', methods=['POST'])
 def webhook():
     try:
         data = request.get_json(force=True)
         signal = data.get("signal")
         strength = float(data.get("strength", 1.0))
-        print("📦 수신:", signal, strength)
+        print("📦 수신:", data)
 
         if "ENTRY" in signal:
             eq = get_equity()
             if not eq:
                 return "잔고 조회 실패", 500
             res = place_entry(signal, eq, strength)
-
         elif "EXIT" in signal:
-            res = execute_exit(signal, strength)
-
+            res = place_exit(signal, strength)
+            finalize_remaining(signal)
         else:
             return "Unknown signal", 400
 
