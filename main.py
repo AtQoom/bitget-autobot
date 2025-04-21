@@ -53,8 +53,13 @@ def get_position():
     }
     try:
         r = requests.get(url, headers=headers).json()
-        return r.get("data", {})
-    except:
+        if r and r.get("code") == "00000" and r.get("data"):
+            return r["data"]
+        else:
+            print("❗ get_position() 응답 없음 또는 오류:", r)
+            return {}
+    except Exception as e:
+        print("❗ get_position() 예외:", e)
         return {}
 
 def get_position_size():
