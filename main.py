@@ -68,8 +68,7 @@ def send_order(side, size):
         "size": str(size),
         "price": "",
         "marginMode": "isolated",
-        "productType": "USDT-FUTURES",
-        "positionType": "single"  # ✅ 원웨이 모드 명시
+        "productType": "USDT-FUTURES"
     }
     body = json.dumps(data, separators=(',', ':'))
     sign = sign_message(ts, "POST", path, body)
@@ -81,7 +80,7 @@ def send_order(side, size):
         "Content-Type": "application/json"
     }
     res = requests.post(BASE_URL + path, headers=headers, data=body)
-    print(f"\U0001f4e4 주문 ({side} {size}):", res.status_code, res.text)
+    print(f"📤 주문 ({side} {size}):", res.status_code, res.text)
     return res.json()
 
 def place_entry(signal, equity, strength):
