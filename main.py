@@ -53,14 +53,14 @@ def get_position():
     }
     try:
         r = requests.get(url, headers=headers).json()
-        return r["data"]
+        return r.get("data", {})
     except:
-        return None
+        return {}
 
 def get_position_size():
     data = get_position()
     try:
-        return float(data["total"])
+        return float(data.get("total", 0))
     except:
         return 0
 
