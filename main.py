@@ -15,7 +15,6 @@ def sign_message(timestamp, method, request_path, body=""):
     mac = hmac.new(API_SECRET.encode(), msg.encode(), hashlib.sha256)
     return base64.b64encode(mac.digest()).decode()
 
-# ✅ 자산 조회 함수 (ENTRY 시 수량 계산용)
 def get_equity():
     path = "/api/v2/mix/account/account?symbol=SOLUSDT&marginCoin=USDT&productType=USDT-FUTURES"
     url = BASE_URL + path
@@ -33,7 +32,6 @@ def get_equity():
     except:
         return None
 
-# ✅ 현재가 조회
 def get_price():
     url = BASE_URL + "/api/v2/mix/market/ticker?symbol=SOLUSDT&productType=USDT-FUTURES"
     try:
@@ -42,7 +40,6 @@ def get_price():
     except:
         return 1.0
 
-# ✅ 포지션 정보 조회
 def get_position():
     path = "/api/v2/mix/position/single-position?symbol=SOLUSDT&marginCoin=USDT&productType=USDT-FUTURES"
     url = BASE_URL + path
@@ -56,7 +53,7 @@ def get_position():
     }
     try:
         r = requests.get(url, headers=headers).json()
-        if r.get("code") == "00000" and isinstance(r.get("data"), list) and len(r["data"]) > 0:
+        if r and r.get("code") == "00000" and isinstance(r.get("data"), list) and len(r["data"]) > 0:
             return r["data"][0]
         else:
             return {}
@@ -74,15 +71,10 @@ def get_position_direction():
     data = get_position()
     try:
         side = data.get("holdSide", None)
-        if side in ["long", "short"]:
-            return side
-        else:
-            print("❗ holdSide 비정상:", side)
-            return None
+        return side if side in ["long", "short"] else None
     except:
         return None
 
-# ✅ 주문 실행
 def send_order(side, size):
     path = "/api/v2/mix/order/place-order"
     ts = str(int(time.time() * 1000))
@@ -110,7 +102,6 @@ def send_order(side, size):
     print(f"📤 주문 ({side} {size}):", res.status_code, res.text)
     return res.json()
 
-# ✅ 진입 처리
 def place_entry(signal, equity, strength):
     direction = "buy" if "LONG" in signal else "sell"
     leverage = 4
@@ -127,7 +118,6 @@ def place_entry(signal, equity, strength):
         return {"error": "too small"}
     return send_order(direction, size)
 
-# ✅ 청산 처리
 def place_exit(signal, strength):
     pos = get_position_size()
     if pos <= 0:
@@ -144,31 +134,30 @@ def place_exit(signal, strength):
     if "TP1" in signal or "TP2" in signal or "SL_SLOW" in signal:
         if pos_dir == "long" and direction == "sell":
             if "TP1" in signal:
-                size = floor(pos * tp1_ratio * 10) / 10
+                size = max(floor(pos * tp1_ratio * 10) / 10, 0.1)
             elif "TP2" in signal:
-                size = floor(pos * tp2_ratio * 10) / 10
+                size = max(floor(pos * tp2_ratio * 10) / 10, 0.1)
             elif "SL_SLOW" in signal:
-                size = floor(pos * 0.5 * 10) / 10
+                size = max(floor(pos * 0.5 * 10) / 10, 0.1)
             return send_order("sell", size)
         elif pos_dir == "short" and direction == "buy":
             if "TP1" in signal:
-                size = floor(pos * tp1_ratio * 10) / 10
+                size = max(floor(pos * tp1_ratio * 10) / 10, 0.1)
             elif "TP2" in signal:
-                size = floor(pos * tp2_ratio * 10) / 10
+                size = max(floor(pos * tp2_ratio * 10) / 10, 0.1)
             elif "SL_SLOW" in signal:
-                size = floor(pos * 0.5 * 10) / 10
+                size = max(floor(pos * 0.5 * 10) / 10, 0.1)
             return send_order("buy", size)
 
-    print(f"⛔ 포지션 방향 불일치. 스킵: {signal}")
+    print(f"⛔ 포지션 방향 불일치 또는 신호 없음. 스킵: {signal}")
     return {"skip": True}
 
-# ✅ 잔여 포지션 정리
 def finalize_remaining(signal):
     direction = "sell" if "LONG" in signal else "buy"
     current_dir = get_position_direction()
     expected_dir = "long" if direction == "sell" else "short"
     if current_dir != expected_dir:
-        print(f"⛔ 최종청산 방향 불일치. 스킵: {signal}")
+        print(f"⛔ 최종청산 방향 불일치 ({current_dir}). 스킵: {signal}")
         return {"skip": True}
     size = get_position_size()
     if 0 < size < 0.1:
@@ -176,7 +165,6 @@ def finalize_remaining(signal):
         return send_order(direction, floor(size * 10) / 10)
     return {"status": "done"}
 
-# ✅ 웹훅 처리
 @app.route('/', methods=['POST'])
 def webhook():
     try:
